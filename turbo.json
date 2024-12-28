@@ -1,0 +1,15 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@gittrends-app/geocoder-cli#build": {
+      "dependsOn": ["@gittrends-app/geocoder-core#build"]
+    }
+  }
+}
