@@ -37,7 +37,6 @@
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",
     "@commitlint/config-conventional": "^19.6.0",
-    "@release-it/bumper": "^6.0.1",
     "@tsconfig/node18": "^18.2.4",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.2",
@@ -70,7 +69,5 @@
     }
   },
   "packageManager": "yarn@1.22.22",
-  "release-it": {
-    "npm": false
-  }
+  "release-it": false
 }
