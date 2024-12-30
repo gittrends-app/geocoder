@@ -20,7 +20,8 @@
     "build": "tsc && tsc-alias",
     "dev": "tsx watch -r \"dotenv-flow/config\" src/cli.ts",
     "start": "node -r \"dotenv-flow/config\" dist/cli.js",
-    "release": "release-it"
+    "release": "release-it",
+    "prepack": "npx shx cp ../../README.md dist"
   },
   "dependencies": {
     "@dnlup/fastify-traps": "^3.1.0",
@@ -36,7 +37,7 @@
   "files": [
     "dist",
     "package.json",
-    "README.md"
+    "dist/README.md"
   ],
   "release-it": {
     "git": {
