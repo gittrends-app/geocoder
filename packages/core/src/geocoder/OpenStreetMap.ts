@@ -1,6 +1,6 @@
-import fetch from 'node-fetch';
 import geocoder from 'node-geocoder';
 import { Address, AddressSchema } from '../entities/Address.js';
+import fetch from '../helpers/fetch.js';
 import { Geocoder } from './Geocoder.js';
 import { Throttler } from './decorators/Throttler.js';
 
@@ -14,7 +14,11 @@ class BaseOpenStreetMap implements Geocoder {
    * Constructor that creates the geocoder service
    */
   constructor(private options: { minConfidence: number }) {
-    this.geocoderService = geocoder({ provider: 'openstreetmap', language: 'en-US', fetch });
+    this.geocoderService = geocoder({
+      provider: 'openstreetmap',
+      language: 'en-US',
+      fetch: fetch as any
+    });
   }
 
   /**

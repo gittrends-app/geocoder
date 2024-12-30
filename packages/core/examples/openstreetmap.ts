@@ -11,7 +11,7 @@ import { Cache, OpenStreetMap } from '../src/index.js';
   // Create a cache decorator for the OpenStreetMap service (optional)
   // This decorator works as a proxy for the OpenStreetMap service caching previous results
   const service = new Cache(openstreetmap, {
-    dirname: resolve(tmpdir(), 'addresses.json'),
+    dirname: resolve(tmpdir(), 'geocoder'),
     size: 1000,
     ttl: 0
   });
