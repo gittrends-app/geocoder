@@ -94,9 +94,6 @@
         "npx auto-changelog -p",
         "git add CHANGELOG.md"
       ]
-    },
-    "plugins": {
-      "@release-it-plugins/workspaces": true
     }
   }
 }
