@@ -83,7 +83,6 @@
     "github": {
       "release": true,
       "releaseName": "v${version}",
-      "releaseNotes": "CHANGELOG.md",
       "autoGenerate": true,
       "web": true
     },
