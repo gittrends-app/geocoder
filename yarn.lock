@@ -665,10 +665,10 @@
     rfdc "^1.3.1"
     yaml "^2.4.2"
 
-"@gittrends-app/geocoder-core@3.0.0":
-  version "3.0.0"
-  resolved "https://registry.npmjs.org/@gittrends-app/geocoder-core/-/geocoder-core-3.0.0.tgz"
-  integrity sha512-bHynQkAViaLDDE+00OnCpkBH9antuThRb8byU/AYu9Ev4CJmjKXuaeFy44ieeJnMbbbLB5e4dN1A86TN6Ag8WA==
+"@gittrends-app/geocoder-core@3.1.0":
+  version "3.1.0"
+  resolved "https://registry.npmjs.org/@gittrends-app/geocoder-core/-/geocoder-core-3.1.0.tgz"
+  integrity sha512-C6O/uOMBeiUeSe4IrHnsBD+8OjKUVMLYDC/pYxlr9j34x8obvnBOWHK9SqbCqHkoe9/yFJhL0qQAcnWakQ1XKw==
   dependencies:
     "@keyv/compress-brotli" "^2.0.2"
     cache-manager "^6.3.2"
@@ -678,6 +678,7 @@
     node-fetch "^3.3.2"
     node-geocoder "^4.4.1"
     p-queue "^8.0.1"
+    pretty-format "^29.7.0"
     zod "^3.24.1"
 
 "@humanwhocodes/config-array@^0.13.0":

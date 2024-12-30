@@ -1,6 +1,6 @@
 {
   "name": "@gittrends-app/geocoder-cli",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "main": "./dist/cli.js",
   "types": "./dist/cli.d.ts",
   "type": "module",
@@ -26,7 +26,7 @@
     "@dnlup/fastify-traps": "^3.1.0",
     "@fastify/swagger": "^9.4.0",
     "@fastify/swagger-ui": "^5.2.0",
-    "@gittrends-app/geocoder-core": "3.0.0",
+    "@gittrends-app/geocoder-core": "3.1.0",
     "commander": "^12.1.0",
     "consola": "^3.3.3",
     "fastify": "^5.2.0",
