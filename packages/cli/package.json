@@ -47,7 +47,7 @@
       "push": true
     },
     "plugins": {
-      "@semabit/release-it-bumper": {
+      "@release-it/bumper": {
         "in": {
           "file": "../core/package.json"
         },
