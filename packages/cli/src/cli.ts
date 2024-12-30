@@ -33,6 +33,7 @@ program
   .action(async (options) => {
     const app = createApp({
       cache: { dirname: options.cacheDir, size: options.cacheSize },
+      geocoder: { concurrency: 1, minConfidence: 0.5 },
       debug: env.NODE_ENV === 'development'
     });
 

@@ -15,6 +15,7 @@ import pJson from '../package.json' with { type: 'json' };
 
 type AppOptions = {
   cache: { dirname: string; size?: number };
+  geocoder: { concurrency: number; minConfidence: number };
   debug?: boolean;
 };
 
@@ -48,7 +49,7 @@ export function createApp(options: AppOptions): FastifyInstance {
     routePrefix: '/docs'
   });
 
-  const geocoder = new Cache(new OpenStreetMap(), {
+  const geocoder = new Cache(new OpenStreetMap(options.geocoder), {
     dirname: options.cache.dirname,
     size: options.cache?.size
   });

@@ -8,7 +8,14 @@ import { Throttler } from './decorators/Throttler.js';
  * Base for OpenStreetMap geocoder service
  */
 class BaseOpenStreetMap implements Geocoder {
-  private geocoderService = geocoder({ provider: 'openstreetmap', language: 'en-US', fetch });
+  private geocoderService;
+
+  /**
+   * Constructor that creates the geocoder service
+   */
+  constructor(private options: { minConfidence: number }) {
+    this.geocoderService = geocoder({ provider: 'openstreetmap', language: 'en-US', fetch });
+  }
 
   /**
    * Search for addresses
@@ -21,12 +28,22 @@ class BaseOpenStreetMap implements Geocoder {
 
     if (response.length === 0) return null;
 
+    const address = response[0];
+    const [raw]: any = response['raw' as any];
+
+    if (raw.importance < this.options.minConfidence) return null;
+
     return AddressSchema.parse({
       source: q,
-      country: response[0].country,
-      country_code: response[0].countryCode,
-      state: response[0].state,
-      city: response[0].city
+      name:
+        [address.country, address.state, address.city].filter(Boolean).join(', ') ||
+        address.formattedAddress,
+      type: raw.addresstype,
+      confidence: raw.importance,
+      country: address.country,
+      country_code: address.countryCode,
+      state: address.state,
+      city: address.city
     });
   }
 }
@@ -37,8 +54,15 @@ class BaseOpenStreetMap implements Geocoder {
 export class OpenStreetMap extends Throttler implements Geocoder {
   /**
    * Constructor that consider API limits
+   * @param options - Service options
+   * @param options.concurrency - Number of concurrent requests (default: 1)
+   * @param options.minConfidence - Minimum confidence level (default: 0.5)
    */
-  constructor(options: { concurrency: number } = { concurrency: 1 }) {
-    super(new BaseOpenStreetMap(), { ...options, intervalCap: 1000 });
+  constructor(options: { concurrency: number; minConfidence?: number } = { concurrency: 1 }) {
+    const { minConfidence, ...opts } = options;
+    super(new BaseOpenStreetMap({ minConfidence: minConfidence || 0.5 }), {
+      ...opts,
+      intervalCap: 1000
+    });
   }
 }
