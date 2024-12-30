@@ -19,7 +19,8 @@
     "lint": "eslint src --ext .ts",
     "build": "tsc && tsc-alias",
     "dev": "tsx watch -r \"dotenv-flow/config\" src/cli.ts",
-    "start": "node -r \"dotenv-flow/config\" dist/cli.js"
+    "start": "node -r \"dotenv-flow/config\" dist/cli.js",
+    "release": "release-it"
   },
   "dependencies": {
     "@dnlup/fastify-traps": "^3.1.0",
@@ -36,5 +37,18 @@
     "dist",
     "package.json",
     "README.md"
-  ]
+  ],
+  "release-it": {
+    "git": false,
+    "plugins": {
+      "@release-it/bumper": {
+        "out": {
+          "file": "package.json",
+          "path": [
+            "dependencies.@gittrends-app/geocoder-core"
+          ]
+        }
+      }
+    }
+  }
 }

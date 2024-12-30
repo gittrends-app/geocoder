@@ -15,7 +15,8 @@
   },
   "scripts": {
     "lint": "eslint src --ext .ts",
-    "build": "tsc && tsc-alias"
+    "build": "tsc && tsc-alias",
+    "release": "release-it"
   },
   "dependencies": {
     "@keyv/compress-brotli": "^2.0.2",
@@ -34,5 +35,8 @@
   "files": [
     "dist",
     "package.json"
-  ]
+  ],
+  "release-it": {
+    "git": false
+  }
 }
