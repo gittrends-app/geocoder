@@ -48,7 +48,9 @@
     },
     "plugins": {
       "@release-it/bumper": {
-        "in": "../core/package.json",
+        "in": {
+          "file": "../core/package.json"
+        },
         "out": {
           "file": "package.json",
           "path": [
