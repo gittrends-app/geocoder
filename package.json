@@ -71,28 +71,6 @@
   },
   "packageManager": "yarn@1.22.22",
   "release-it": {
-    "npm": false,
-    "git": {
-      "requireCleanWorkingDir": false,
-      "commit": true,
-      "commitMessage": "chore(release): v${version}",
-      "tag": true,
-      "tagName": "v${version}",
-      "push": true
-    },
-    "github": {
-      "release": true,
-      "releaseName": "v${version}",
-      "autoGenerate": true,
-      "web": true
-    },
-    "hooks": {
-      "after:bump": [
-        "yarn install",
-        "yarn build",
-        "npx auto-changelog -p",
-        "git add CHANGELOG.md"
-      ]
-    }
+    "npm": false
   }
 }

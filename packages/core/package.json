@@ -45,6 +45,14 @@
       "tag": true,
       "tagName": "core-v${version}",
       "push": true
+    },
+    "hooks": {
+      "after:bump": [
+        "yarn install",
+        "yarn build",
+        "git add ../../yarn.lock",
+        "yarn shx rm ../../package-lock.json"
+      ]
     }
   }
 }
