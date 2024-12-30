@@ -1,6 +1,5 @@
 {
   "name": "@gittrends-app/geocoder",
-  "version": "0.0.1",
   "license": "MIT",
   "private": true,
   "engines": {
