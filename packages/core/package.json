@@ -1,6 +1,6 @@
 {
   "name": "@gittrends-app/geocoder-core",
-  "version": "0.0.1",
+  "version": "3.0.0",
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -37,6 +37,12 @@
     "package.json"
   ],
   "release-it": {
-    "git": false
+    "git": {
+      "commit": true,
+      "commitMessage": "chore(release): core-v${version}",
+      "tag": true,
+      "tagName": "core-v${version}",
+      "push": true
+    }
   }
 }
