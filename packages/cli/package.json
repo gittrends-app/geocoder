@@ -46,19 +46,6 @@
       "tagName": "cli-v${version}",
       "push": true
     },
-    "plugins": {
-      "@release-it/bumper": {
-        "in": {
-          "file": "../core/package.json"
-        },
-        "out": {
-          "file": "package.json",
-          "path": [
-            "dependencies.@gittrends-app/geocoder-core"
-          ]
-        }
-      }
-    },
     "hooks": {
       "after:bump": [
         "yarn install",
