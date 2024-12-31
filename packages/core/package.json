@@ -15,7 +15,7 @@
   },
   "scripts": {
     "lint": "eslint src --ext .ts",
-    "build": "tsc && tsc-alias",
+    "build": "shx rm -rf dist && tsup src/index.ts --minify --dts --format esm --clean",
     "release": "release-it"
   },
   "dependencies": {
