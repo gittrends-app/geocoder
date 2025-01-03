@@ -26,6 +26,10 @@ import { Cache, OpenStreetMap } from '../src/index.js';
   consola.info(prettyformat.format(response, { min: true }));
   // output: null
 
+  response = await service.search('UK');
+  consola.info(prettyformat.format(response, { min: true }));
+  // output: {"confidence": 0.9299570012385155, "country": "United Kingdom", "country_code": "GB", "name": "United Kingdom", "source": "UK", "type": "country"}
+
   response = await service.search('Brazil');
   consola.info(prettyformat.format(response, { min: true }));
   // output: {"confidence": 0.8954966110329021, "country": "Brazil", "country_code": "BR", "name": "Brazil", "source": "Brazil", "type": "country"}

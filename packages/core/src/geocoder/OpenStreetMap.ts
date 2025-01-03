@@ -28,22 +28,27 @@ class BaseOpenStreetMap implements Geocoder {
    */
   async search(q: string): Promise<Address | null> {
     // @ts-expect-error: geocode method does not match expected types
-    const response = await this.geocoderService.geocode({ q, limit: 1 });
+    const response = await this.geocoderService.geocode({ q, limit: 3 });
 
     if (response.length === 0) return null;
 
-    const address = response[0];
-    const [raw]: any = response['raw' as any];
+    const raw = response['raw' as any] as { [k: string]: any; importance: number }[];
+    const maxIndex = raw.findIndex(
+      (r) => r.importance === Math.max(...raw.map((r) => r.importance))
+    );
 
-    if (raw.importance < this.options.minConfidence) return null;
+    const address = response[maxIndex];
+    const rawAddress = raw[maxIndex];
+
+    if (rawAddress.importance < this.options.minConfidence) return null;
 
     return AddressSchema.parse({
       source: q,
       name:
         [address.country, address.state, address.city].filter(Boolean).join(', ') ||
         address.formattedAddress,
-      type: raw.addresstype,
-      confidence: raw.importance,
+      type: rawAddress.addresstype,
+      confidence: rawAddress.importance,
       country: address.country,
       country_code: address.countryCode,
       state: address.state,
