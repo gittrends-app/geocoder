@@ -11,6 +11,8 @@ import {
 import { z } from 'zod';
 
 import { AddressSchema, Cache, OpenStreetMap } from '@gittrends-app/geocoder-core';
+import { KeyvFile } from 'keyv-file';
+import path from 'node:path';
 import pJson from '../package.json' with { type: 'json' };
 
 type AppOptions = {
@@ -50,8 +52,11 @@ export function createApp(options: AppOptions): FastifyInstance {
   });
 
   const geocoder = new Cache(new OpenStreetMap(options.geocoder), {
-    dirname: options.cache.dirname,
-    size: options.cache?.size
+    namespace: 'geocoder-cache-cli',
+    size: options.cache?.size,
+    secondary: new KeyvFile({
+      filename: path.resolve(options.cache.dirname, 'geocoder-cache.json')
+    })
   });
 
   app.after(async () => {
