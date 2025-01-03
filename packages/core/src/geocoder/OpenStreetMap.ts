@@ -28,19 +28,31 @@ class BaseOpenStreetMap implements Geocoder {
    */
   async search(q: string): Promise<Address | null> {
     // @ts-expect-error: geocode method does not match expected types
-    const response = await this.geocoderService.geocode({ q, limit: 3 });
+    const response = await this.geocoderService.geocode({ q, limit: 5 });
 
     if (response.length === 0) return null;
 
-    const raw = response['raw' as any] as { [k: string]: any; importance: number }[];
+    const raw = response['raw' as any] as {
+      [k: string]: any;
+      class?: string;
+      type?: string;
+      importance: number;
+    }[];
     const maxIndex = raw.findIndex(
-      (r) => r.importance === Math.max(...raw.map((r) => r.importance))
+      (r) =>
+        r.importance ===
+          Math.max(
+            ...raw
+              .filter((r) => r.class === 'place' || r.class === 'boundary')
+              .map((r) => r.importance)
+          ) &&
+        (r.class === 'place' || r.class === 'boundary')
     );
 
     const address = response[maxIndex];
     const rawAddress = raw[maxIndex];
 
-    if (rawAddress.importance < this.options.minConfidence) return null;
+    if (!address || rawAddress.importance < this.options.minConfidence) return null;
 
     return AddressSchema.parse({
       source: q,
@@ -65,11 +77,11 @@ export class OpenStreetMap extends Throttler implements Geocoder {
    * Constructor that consider API limits
    * @param options - Service options
    * @param options.concurrency - Number of concurrent requests (default: 1)
-   * @param options.minConfidence - Minimum confidence level (default: 0.5)
+   * @param options.minConfidence - Minimum confidence level (default: 0)
    */
   constructor(options: { concurrency: number; minConfidence?: number } = { concurrency: 1 }) {
     const { minConfidence, ...opts } = options;
-    super(new BaseOpenStreetMap({ minConfidence: minConfidence || 0.5 }), {
+    super(new BaseOpenStreetMap({ minConfidence: minConfidence || 0 }), {
       ...opts,
       intervalCap: 1000
     });
