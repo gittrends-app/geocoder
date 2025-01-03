@@ -1,6 +1,7 @@
 import consola from 'consola';
+import { KeyvFile } from 'keyv-file';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import path from 'node:path';
 import prettyformat from 'pretty-format';
 import { Cache, OpenStreetMap } from '../src/index.js';
 
@@ -11,9 +12,10 @@ import { Cache, OpenStreetMap } from '../src/index.js';
   // Create a cache decorator for the OpenStreetMap service (optional)
   // This decorator works as a proxy for the OpenStreetMap service caching previous results
   const service = new Cache(openstreetmap, {
-    dirname: resolve(tmpdir(), 'geocoder'),
     size: 1000,
-    ttl: 0
+    ttl: 0,
+    namespace: 'openstreetmap-example',
+    secondary: new KeyvFile({ filename: path.resolve(tmpdir(), 'geocoder-data.json') }) // any persistent cache implementation
   });
 
   // Some examples of addresses for testing

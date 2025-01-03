@@ -1,6 +1,6 @@
 import KeyvBrotli from '@keyv/compress-brotli';
-import { Cache as CacheManager, createCache } from 'cache-manager';
-import Keyv from 'keyv';
+import { Cache as CacheManager, createCache, CreateCacheOptions } from 'cache-manager';
+import Keyv, { KeyvOptions } from 'keyv';
 import { constants } from 'node:zlib';
 import QuickLRU from 'quick-lru';
 import { Address } from '../../entities/Address.js';
@@ -18,13 +18,14 @@ export class Cache extends GeocoderDecorator {
    */
   constructor(
     service: Geocoder,
-    options: { dirname: string; size?: number; ttl?: number; secondary?: Keyv }
+    options: { size?: number; ttl?: number; namespace?: string; secondary?: KeyvOptions }
   ) {
     super(service);
 
-    const stores: Keyv[] = [
+    const stores: CreateCacheOptions['stores'] = [
       // In-memory cache with LRU
       new Keyv({
+        namespace: options.namespace,
         store: new QuickLRU({ maxSize: options.size || 1000 }),
         compression: new KeyvBrotli({
           compressOptions: {
@@ -35,15 +36,15 @@ export class Cache extends GeocoderDecorator {
     ];
 
     if (options.secondary) {
-      // File cache
-      new Keyv({
-        store: options.secondary,
-        compression: new KeyvBrotli({
+      if (!options.secondary.compression) {
+        options.secondary.namespace = options.namespace;
+        options.secondary.compression = new KeyvBrotli({
           compressOptions: {
             params: { [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY }
           }
-        })
-      });
+        });
+      }
+      stores.push(new Keyv(options.secondary));
     }
 
     this.cache = createCache({ ttl: options.ttl || 0, stores });
@@ -59,7 +60,7 @@ export class Cache extends GeocoderDecorator {
     if (cached) return cached;
 
     return this.geocoder.search(q, options).then(async (address) => {
-      if (address) await this.cache.set(q, address);
+      await this.cache.set(q, address);
       return address;
     });
   }

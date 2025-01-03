@@ -23,6 +23,7 @@
     "cache-manager": "^6.3.2",
     "fetch-retry": "^6.0.0",
     "keyv": "^5.2.3",
+    "keyv-file": "^5.1.1",
     "node-fetch": "^3.3.2",
     "node-geocoder": "^4.4.1",
     "p-queue": "^8.0.1",
