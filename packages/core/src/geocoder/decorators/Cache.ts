@@ -1,10 +1,8 @@
 import KeyvBrotli from '@keyv/compress-brotli';
 import { Cache as CacheManager, createCache } from 'cache-manager';
-import { CacheableMemory } from 'cacheable';
 import Keyv from 'keyv';
-import { KeyvFile } from 'keyv-file';
-import { resolve } from 'node:path';
 import { constants } from 'node:zlib';
+import QuickLRU from 'quick-lru';
 import { Address } from '../../entities/Address.js';
 import { Geocoder } from '../Geocoder.js';
 import { GeocoderDecorator } from './GeocoderDecorator.js';
@@ -18,34 +16,37 @@ export class Cache extends GeocoderDecorator {
   /**
    * @param service - Geocoder service
    */
-  constructor(service: Geocoder, options: { dirname: string; size?: number; ttl?: number }) {
+  constructor(
+    service: Geocoder,
+    options: { dirname: string; size?: number; ttl?: number; secondary?: Keyv }
+  ) {
     super(service);
 
-    this.cache = createCache({
-      stores: [
-        // In-memory cache with LRU
-        new Keyv({
-          store: new CacheableMemory({ ttl: options.ttl || 0, lruSize: options.size || 1000 }),
-          compression: new KeyvBrotli({
-            compressOptions: {
-              params: { [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MIN_QUALITY }
-            }
-          })
-        }),
-        // Sqlite Store
-        new Keyv({
-          store: new KeyvFile({
-            filename: resolve(options.dirname, 'addresses.json'),
-            writeDelay: 1000
-          }),
-          compression: new KeyvBrotli({
-            compressOptions: {
-              params: { [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY }
-            }
-          })
+    const stores: Keyv[] = [
+      // In-memory cache with LRU
+      new Keyv({
+        store: new QuickLRU({ maxSize: options.size || 1000 }),
+        compression: new KeyvBrotli({
+          compressOptions: {
+            params: { [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MIN_QUALITY }
+          }
         })
-      ]
-    });
+      })
+    ];
+
+    if (options.secondary) {
+      // File cache
+      new Keyv({
+        store: options.secondary,
+        compression: new KeyvBrotli({
+          compressOptions: {
+            params: { [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY }
+          }
+        })
+      });
+    }
+
+    this.cache = createCache({ ttl: options.ttl || 0, stores });
   }
 
   /**
