@@ -1,2 +1,3 @@
-npm run lint
-npm run build
+npx turbo lint
+npx turbo test
+npx turbo build

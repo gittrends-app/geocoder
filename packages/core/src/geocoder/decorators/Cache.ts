@@ -56,11 +56,11 @@ export class Cache extends GeocoderDecorator {
    * @returns Promise<Address | null> - The address found or null
    */
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
-    const cached = await this.cache.get<Address>(q);
+    const cached = await this.cache.get<Address | false>(q);
     if (cached) return cached;
 
     return this.geocoder.search(q, options).then(async (address) => {
-      await this.cache.set(q, address);
+      await this.cache.set(q, address || false);
       return address;
     });
   }
