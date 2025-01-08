@@ -7,7 +7,11 @@ import { Cache, OpenStreetMap } from '../src/index.js';
 
 (async function main() {
   // Create a new instance of the OpenStreetMap service
-  const openstreetmap = new OpenStreetMap({ concurrency: 1, minConfidence: 0.5 });
+  const openstreetmap = new OpenStreetMap({
+    concurrency: 1,
+    minConfidence: 0.5,
+    osmServer: 'https://nominatim.geocoding.ai'
+  });
 
   // Create a cache decorator for the OpenStreetMap service (optional)
   // This decorator works as a proxy for the OpenStreetMap service caching previous results

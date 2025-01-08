@@ -10,14 +10,19 @@ import {
 } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 
-import { AddressSchema, Cache, OpenStreetMap } from '@gittrends-app/geocoder-core';
+import {
+  AddressSchema,
+  Cache,
+  OpenStreetMap,
+  OpenStreetMapOptions
+} from '@gittrends-app/geocoder-core';
 import { KeyvFile } from 'keyv-file';
 import path from 'node:path';
 import pJson from '../package.json' with { type: 'json' };
 
 type AppOptions = {
   cache: { dirname: string; size?: number };
-  geocoder: { concurrency: number; minConfidence: number };
+  geocoder: OpenStreetMapOptions;
   debug?: boolean;
 };
 

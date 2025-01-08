@@ -11,6 +11,21 @@ import { env } from './helpers/env.js';
  */
 program
   .addOption(
+    new Option('--osm-server [SERVER]', 'OpenStreetMap server to use')
+      .default(env.OSM_SERVER)
+      .env('OSM_SERVER')
+  )
+  .addOption(
+    new Option('--osm-email [EMAIL]', 'Email to use for OpenStreetMap requests')
+      .default(env.OSM_EMAIL)
+      .env('OSM_EMAIL')
+  )
+  .addOption(
+    new Option('--osm-agent [AGENT]', 'User agent to use for OpenStreetMap requests')
+      .default(env.OSM_USER_AGENT)
+      .env('OSM_USER_AGENT')
+  )
+  .addOption(
     new Option('--cache-dir [DIR]', 'Directory to store cache files')
       .default(env.CACHE_DIR)
       .env('CACHE_DIR')
@@ -31,9 +46,22 @@ program
   .helpOption('--help', 'Show usage instructions')
   .version(pJson.version)
   .action(async (options) => {
+    const { osmServer, osmEmail, osmAgent } = options;
+    if (osmServer === 'https://nominatim.openstreetmap.org' && (!osmEmail || !osmAgent)) {
+      program.error(
+        'You must provide an email and user agent for the default server (--help for more info)'
+      );
+    }
+
     const app = createApp({
       cache: { dirname: options.cacheDir, size: options.cacheSize },
-      geocoder: { concurrency: 1, minConfidence: 0.5 },
+      geocoder: {
+        osmServer: osmServer,
+        email: osmEmail,
+        userAgent: osmAgent,
+        concurrency: 1,
+        minConfidence: 0
+      },
       debug: env.NODE_ENV === 'development'
     });
 

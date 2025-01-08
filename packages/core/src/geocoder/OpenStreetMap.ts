@@ -1,8 +1,15 @@
+import { RequestInfo, RequestInit } from 'node-fetch';
 import geocoder from 'node-geocoder';
+import type { MergeExclusive } from 'type-fest';
 import { Address, AddressSchema } from '../entities/Address.js';
 import fetch from '../helpers/fetch.js';
 import { Geocoder } from './Geocoder.js';
 import { Throttler } from './decorators/Throttler.js';
+
+type BaseOpenStreetMapOptions = { minConfidence: number } & MergeExclusive<
+  { osmServer: string },
+  { email: string; userAgent: string }
+>;
 
 /**
  * Base for OpenStreetMap geocoder service
@@ -13,11 +20,21 @@ class BaseOpenStreetMap implements Geocoder {
   /**
    * Constructor that creates the geocoder service
    */
-  constructor(private options: { minConfidence: number }) {
+  constructor(private options: BaseOpenStreetMapOptions) {
     this.geocoderService = geocoder({
       provider: 'openstreetmap',
+      osmServer: options.osmServer,
+      email: options.email,
       language: 'en-US',
-      fetch: fetch as any
+      fetch: function (url: RequestInfo, fetchOptions?: RequestInit) {
+        return fetch(url, {
+          ...fetchOptions,
+          headers: {
+            ...fetchOptions?.headers,
+            'User-Agent': options.userAgent || 'gittrends-geocoder'
+          }
+        });
+      }
     });
   }
 
@@ -69,6 +86,8 @@ class BaseOpenStreetMap implements Geocoder {
   }
 }
 
+export type OpenStreetMapOptions = { concurrency: number } & BaseOpenStreetMapOptions;
+
 /**
  * OpenStreetMap geocoder service
  */
@@ -76,13 +95,11 @@ export class OpenStreetMap extends Throttler implements Geocoder {
   /**
    * Constructor that consider API limits
    * @param options - Service options
-   * @param options.concurrency - Number of concurrent requests (default: 1)
-   * @param options.minConfidence - Minimum confidence level (default: 0)
    */
-  constructor(options: { concurrency: number; minConfidence?: number } = { concurrency: 1 }) {
-    const { minConfidence, ...opts } = options;
-    super(new BaseOpenStreetMap({ minConfidence: minConfidence || 0 }), {
-      ...opts,
+  constructor(options: OpenStreetMapOptions) {
+    const { concurrency, ...opts } = options;
+    super(new BaseOpenStreetMap(opts), {
+      concurrency,
       intervalCap: 1000
     });
   }
