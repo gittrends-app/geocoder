@@ -3,14 +3,14 @@ import { Cache as CacheManager, createCache, CreateCacheOptions } from 'cache-ma
 import Keyv, { KeyvOptions } from 'keyv';
 import { constants } from 'node:zlib';
 import QuickLRU from 'quick-lru';
-import { Address } from '../../entities/Address.js';
-import { Geocoder } from '../Geocoder.js';
-import { GeocoderDecorator } from './GeocoderDecorator.js';
+import { Address } from '../../entities/Address';
+import { Geocoder } from '../Geocoder';
+import { Decorator } from './Decorator';
 
 /**
  *  Cached service decorator
  */
-export class Cache extends GeocoderDecorator {
+export class Cache extends Decorator {
   private cache: CacheManager;
 
   /**

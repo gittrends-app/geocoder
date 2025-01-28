@@ -1,3 +1,11 @@
+import {
+  AddressSchema,
+  Cache,
+  Fallback,
+  OpenStreetMap,
+  OpenStreetMapOptions,
+  Proton
+} from '@/core';
 import fastifyTraps from '@dnlup/fastify-traps';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
@@ -8,16 +16,9 @@ import {
   validatorCompiler,
   ZodTypeProvider
 } from 'fastify-type-provider-zod';
-import { z } from 'zod';
-
-import {
-  AddressSchema,
-  Cache,
-  OpenStreetMap,
-  OpenStreetMapOptions
-} from '@gittrends-app/geocoder-core';
 import { KeyvFile } from 'keyv-file';
 import path from 'node:path';
+import { z } from 'zod';
 import pJson from '../package.json' with { type: 'json' };
 
 type AppOptions = {
@@ -56,13 +57,16 @@ export function createApp(options: AppOptions): FastifyInstance {
     routePrefix: '/docs'
   });
 
-  const geocoder = new Cache(new OpenStreetMap(options.geocoder), {
-    namespace: 'geocoder-cache-cli',
-    size: options.cache?.size,
-    secondary: new KeyvFile({
-      filename: path.resolve(options.cache.dirname, 'geocoder-cache.json')
-    })
-  });
+  const geocoder = new Cache(
+    new Fallback(new OpenStreetMap(options.geocoder), new Proton(options.geocoder)),
+    {
+      namespace: 'geocoder-cache-cli',
+      size: options.cache?.size,
+      secondary: new KeyvFile({
+        filename: path.resolve(options.cache.dirname, 'geocoder-cache.json')
+      })
+    }
+  );
 
   app.after(async () => {
     app.get('/', async (req, res) => {

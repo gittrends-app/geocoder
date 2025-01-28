@@ -3,18 +3,13 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    "baseUrl": "./",                                     
-    "resolveJsonModule": true,   
-    "paths": { 
-      "@gittrends-app/geocoder-cli": ["../core/src/index.ts"]
-    }                                         
+    "baseUrl": "./",
+    "resolveJsonModule": true,
+    "paths": {
+      "@/core": ["../core/src/index.ts"]
+    }
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "src/**/*.spec.ts",
-    "src/**/*.test.ts"
-  ]
+  "references": [{ "path": "../core" }],
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "src/**/*.spec.ts", "src/**/*.test.ts"]
 }

@@ -1,10 +1,10 @@
 import { RequestInfo, RequestInit } from 'node-fetch';
 import geocoder from 'node-geocoder';
 import type { MergeExclusive } from 'type-fest';
-import { Address, AddressSchema } from '../entities/Address.js';
-import fetch from '../helpers/fetch.js';
-import { Geocoder } from './Geocoder.js';
-import { Throttler } from './decorators/Throttler.js';
+import { Address, AddressSchema } from '../entities/Address';
+import fetch from '../helpers/fetch';
+import { Geocoder } from './Geocoder';
+import { Throttler } from './decorators/Throttler';
 
 type BaseOpenStreetMapOptions = { minConfidence: number } & MergeExclusive<
   { osmServer: string },

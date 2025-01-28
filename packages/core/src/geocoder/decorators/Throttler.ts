@@ -1,12 +1,12 @@
 import PQueue from 'p-queue';
-import { Address } from '../../entities/Address.js';
-import { Geocoder } from '../Geocoder.js';
-import { GeocoderDecorator } from './GeocoderDecorator.js';
+import { Address } from '../../entities/Address';
+import { Geocoder } from '../Geocoder';
+import { Decorator } from './Decorator';
 
 /**
  * Throttler is a decorator that limits the rate of requests to the geocoder.
  */
-export class Throttler extends GeocoderDecorator {
+export class Throttler extends Decorator {
   private queue;
 
   /**

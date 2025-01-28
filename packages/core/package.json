@@ -15,7 +15,10 @@
   },
   "scripts": {
     "lint": "eslint src --ext .ts",
-    "build": "shx rm -rf dist && tsup src/index.ts --minify --dts --format esm --clean",
+    "build:clean": "shx rm -rf dist tsconfig.tsbuildinfo",
+    "build:bundle": "tsup src/index.ts --minify --format esm --clean",
+    "build:definitions": "tsc --emitDeclarationOnly",
+    "build": "run-s build:clean build:bundle build:definitions",
     "test": "vitest run src",
     "release": "release-it"
   },

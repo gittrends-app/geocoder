@@ -1,10 +1,10 @@
-import { Address } from '../../entities/Address.js';
-import { Geocoder } from '../Geocoder.js';
+import { Address } from '../../entities/Address';
+import { Geocoder } from '../Geocoder';
 
 /**
  * Geocoder service interface
  */
-export abstract class GeocoderDecorator implements Geocoder {
+export abstract class Decorator implements Geocoder {
   /**
    * Constructor
    * @param geocoder - Geocoder service
