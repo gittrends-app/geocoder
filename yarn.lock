@@ -682,7 +682,7 @@
     yaml "^2.4.2"
 
 "@gittrends-app/geocoder-core@file:packages/core":
-  version "4.0.3"
+  version "5.0.0"
   dependencies:
     "@keyv/compress-brotli" "^2.0.2"
     cache-manager "^6.3.2"
