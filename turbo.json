@@ -12,7 +12,7 @@
       "outputs": ["dist/**"]
     },
     "@gittrends-app/geocoder-cli#build": {
-      "dependsOn": ["@gittrends-app/geocoder-core#build"]
+      "dependsOn": ["@gittrends-app/geocoder#build"]
     }
   }
 }

@@ -1,5 +1,5 @@
 {
-  "name": "@gittrends-app/geocoder-core",
+  "name": "@gittrends-app/geocoder",
   "version": "5.0.1",
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
@@ -28,7 +28,6 @@
     "fetch-retry": "^6.0.0",
     "keyv": "^5.2.3",
     "keyv-file": "^5.1.1",
-    "node-fetch": "^3.3.2",
     "node-geocoder": "^4.4.1",
     "p-queue": "^8.0.1",
     "pretty-format": "^29.7.0",
@@ -36,8 +35,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@types/node-geocoder": "^4.2.6",
-    "type-fest": "^4.31.0"
+    "@types/node-geocoder": "^4.2.6"
   },
   "files": [
     "dist",
@@ -47,9 +45,9 @@
   "release-it": {
     "git": {
       "commit": true,
-      "commitMessage": "chore(release): core-v${version}",
+      "commitMessage": "chore(release): v${version}",
       "tag": true,
-      "tagName": "core-v${version}",
+      "tagName": "v${version}",
       "push": true
     },
     "hooks": {
