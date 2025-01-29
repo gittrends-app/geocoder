@@ -11,7 +11,8 @@ Para isso usamos do [Nominatim](https://nominatim.openstreetmap.org/), uma searc
 Esta aplicação age cria um servidor local que permite a consulta por outros clients usando do protocolo REST.
 
 ```console
-npx @gittrends-app/geocoder-cli --port 3000
+docker build github.com/gittrends-app/geocoder -t gittrends/geocoder
+docker run --rm -p 3000:80 gittrends/geocoder
 ```
 
 Após executar o servidor, você poderá consultar localizações fazendo requisições para `/search?q=<localização>`. Por exemplo:
