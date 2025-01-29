@@ -1,7 +1,7 @@
-export * from './decorators/Cache';
-export * from './decorators/Fallback';
-export * from './decorators/Throttler';
+export * from './decorators/Cache.js';
+export * from './decorators/Fallback.js';
+export * from './decorators/Throttler.js';
 
-export * from './Geocoder';
-export * from './OpenStreetMap';
-export * from './Proton';
+export * from './Geocoder.js';
+export * from './OpenStreetMap.js';
+export * from './Proton.js';

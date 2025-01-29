@@ -1,2 +1,2 @@
-export * from './entities';
-export * from './geocoder';
+export * from './entities/index.js';
+export * from './geocoder/index.js';

@@ -1,5 +1,5 @@
-import { Address } from '../../entities/Address';
-import { Geocoder } from '../Geocoder';
+import { Address } from '../../entities/Address.js';
+import { Geocoder } from '../Geocoder.js';
 
 /**
  * Geocoder service interface
