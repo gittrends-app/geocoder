@@ -13,7 +13,7 @@
     "prepare": "husky || true",
     "build": "turbo build",
     "lint": "turbo lint",
-    "release": "release-it --ci"
+    "release": "yarn workspace @gittrends-app/geocoder release-it --ci"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",
