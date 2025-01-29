@@ -1,14 +1,15 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "@tsconfig/node18/tsconfig.json",
   "compilerOptions": {
-    "target": "ESNext",
+    "module": "NodeNext",
     "rootDir": "./src",
     "outDir": "./dist",
     "baseUrl": "./",
     "resolveJsonModule": true,
     "paths": {
       "@/core": ["../core/src/index.ts"]
-    }
+    },
+    "declaration": false
   },
   "references": [{ "path": "../core" }],
   "include": ["src/**/*"],

@@ -16,7 +16,7 @@
   "scripts": {
     "lint": "eslint src --ext .ts",
     "build:clean": "shx rm -rf dist tsconfig.tsbuildinfo",
-    "build:bundle": "tsup src/index.ts --minify --format esm --clean",
+    "build:bundle": "tsup-node src/index.ts --minify --format esm --clean",
     "build:definitions": "tsc --emitDeclarationOnly",
     "build": "run-s build:clean build:bundle build:definitions",
     "test": "vitest run src",
