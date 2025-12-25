@@ -1,6 +1,6 @@
 {
   "name": "@gittrends-app/geocoder",
-  "version": "5.0.6",
+  "version": "5.0.8",
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
