@@ -1,7 +1,7 @@
 import { Address, AddressSchema } from '../entities/Address.js';
 import fetch from '../helpers/fetch.js';
-import { Geocoder } from './Geocoder.js';
 import { Throttler } from './decorators/Throttler.js';
+import { Geocoder } from './Geocoder.js';
 
 /**
  * Base for Proton geocoder service

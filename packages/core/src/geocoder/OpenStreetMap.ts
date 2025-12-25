@@ -3,8 +3,8 @@ import geocoder from 'node-geocoder';
 import type { MergeExclusive } from 'type-fest';
 import { Address, AddressSchema } from '../entities/Address.js';
 import fetch from '../helpers/fetch.js';
-import { Geocoder } from './Geocoder.js';
 import { Throttler } from './decorators/Throttler.js';
+import { Geocoder } from './Geocoder.js';
 
 type BaseOpenStreetMapOptions = { minConfidence: number } & MergeExclusive<
   { osmServer: string },

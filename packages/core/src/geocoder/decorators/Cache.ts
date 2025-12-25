@@ -1,7 +1,7 @@
-import KeyvBrotli from '@keyv/compress-brotli';
-import { Cache as CacheManager, createCache, CreateCacheOptions } from 'cache-manager';
-import Keyv, { KeyvOptions } from 'keyv';
 import { constants } from 'node:zlib';
+import KeyvBrotli from '@keyv/compress-brotli';
+import { Cache as CacheManager, CreateCacheOptions, createCache } from 'cache-manager';
+import Keyv, { KeyvOptions } from 'keyv';
 import QuickLRU from 'quick-lru';
 import { Address } from '../../entities/Address.js';
 import { Geocoder } from '../Geocoder.js';

@@ -1,6 +1,6 @@
 {
   "name": "@gittrends-app/geocoder-cli",
-  "version": "4.0.3",
+  "version": "5.0.5",
   "main": "./dist/cli.js",
   "types": "./dist/cli.d.ts",
   "type": "module",
@@ -11,16 +11,13 @@
   "bin": {
     "gittrends-geocoder": "./dist/cli.js"
   },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org"
-  },
   "scripts": {
-    "lint": "eslint src --ext .ts",
+    "lint": "biome check ./src",
+    "lint:fix": "biome check --write ./src",
+    "format": "biome format --write ./src",
     "build": "shx rm -rf dist && tsup-node src/cli.ts --minify --format esm --clean",
     "dev": "tsx watch -r \"dotenv-flow/config\" src/cli.ts",
     "start": "node -r \"dotenv-flow/config\" dist/cli.js",
-    "release": "release-it",
     "prepack": "npx shx cp ../../README.md dist"
   },
   "dependencies": {

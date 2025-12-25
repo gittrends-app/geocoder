@@ -1,11 +1,4 @@
-import {
-  AddressSchema,
-  Cache,
-  Fallback,
-  OpenStreetMap,
-  OpenStreetMapOptions,
-  Proton
-} from '@/core';
+import path from 'node:path';
 import fastifyTraps from '@dnlup/fastify-traps';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
@@ -17,8 +10,15 @@ import {
   ZodTypeProvider
 } from 'fastify-type-provider-zod';
 import { KeyvFile } from 'keyv-file';
-import path from 'node:path';
 import { z } from 'zod';
+import {
+  AddressSchema,
+  Cache,
+  Fallback,
+  OpenStreetMap,
+  OpenStreetMapOptions,
+  Proton
+} from '@/core';
 import pJson from '../package.json' with { type: 'json' };
 
 type AppOptions = {

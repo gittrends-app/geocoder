@@ -9,18 +9,15 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org"
-  },
   "scripts": {
-    "lint": "eslint src --ext .ts",
+    "lint": "biome check ./src",
+    "lint:fix": "biome check --write ./src",
+    "format": "biome format --write ./src",
     "build:clean": "shx rm -rf dist tsconfig.tsbuildinfo",
     "build:bundle": "tsup-node src/index.ts --minify --format esm --clean",
     "build:definitions": "tsc --emitDeclarationOnly",
     "build": "run-s build:clean build:bundle build:definitions",
-    "test": "vitest run src",
-    "release": "release-it"
+    "test": "vitest run src"
   },
   "dependencies": {
     "@keyv/compress-brotli": "^2.0.2",
@@ -37,29 +34,7 @@
   "devDependencies": {
     "@types/node-geocoder": "^4.2.6",
     "@vitest/coverage-v8": "^3.0.4",
-    "release-it": "^18.1.2",
     "vitest": "^3.0.4"
   },
-  "files": [
-    "dist",
-    "package.json",
-    "README.md"
-  ],
-  "release-it": {
-    "git": {
-      "commit": true,
-      "commitMessage": "chore(release): v${version}",
-      "tag": true,
-      "tagName": "v${version}",
-      "push": true
-    },
-    "hooks": {
-      "after:bump": [
-        "yarn install",
-        "yarn build",
-        "git add ../../yarn.lock",
-        "yarn shx rm ../../package-lock.json"
-      ]
-    }
-  }
+  "files": ["dist", "package.json", "README.md"]
 }

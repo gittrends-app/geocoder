@@ -3,11 +3,10 @@
     "mikestead.dotenv",
     "ms-azuretools.vscode-docker",
     "editorconfig.editorconfig",
-    "dbaeumer.vscode-eslint",
     "github.copilot",
-    "orta.vscode-jest",
+    "vitest.explorer",
     "christian-kohler.npm-intellisense",
-    "esbenp.prettier-vscode",
+    "biomejs.biome",
     "chakrounanas.turbo-console-log"
   ]
 }

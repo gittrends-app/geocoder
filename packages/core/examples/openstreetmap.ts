@@ -1,7 +1,7 @@
-import consola from 'consola';
-import { KeyvFile } from 'keyv-file';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import consola from 'consola';
+import { KeyvFile } from 'keyv-file';
 import prettyformat from 'pretty-format';
 import { Cache, OpenStreetMap } from '../src/index.js';
 
