@@ -83,7 +83,8 @@ export function createApp(options: AppOptions): FastifyInstance {
           q: z.string().min(1).describe('The address to geocode')
         }),
         response: {
-          200: AddressSchema
+          200: AddressSchema,
+          404: z.object({ message: z.string().describe('Address not found') })
         }
       },
       handler: async (req, res) => {
@@ -92,7 +93,7 @@ export function createApp(options: AppOptions): FastifyInstance {
         const q = req.query.q.toLowerCase().trim().replace(/[,]/g, '').replace(/\s+/g, ' ');
         const address = await geocoder.search(q, { signal: controller.signal });
         if (address) res.send(address);
-        else res.status(404).send();
+        else res.status(404).send({ message: 'Address not found' });
       }
     });
   });

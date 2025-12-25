@@ -14,12 +14,20 @@
     "gittrends-geocoder": "./packages/cli/dist/cli.js"
   },
   "type": "module",
-  "files": ["packages/core/dist", "packages/cli/dist", "package.json", "README.md"],
+  "files": [
+    "packages/core/dist",
+    "packages/cli/dist",
+    "package.json",
+    "README.md"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
   "packageManager": "yarn@1.22.22",
-  "workspaces": ["packages/core", "packages/cli"],
+  "workspaces": [
+    "packages/core",
+    "packages/cli"
+  ],
   "scripts": {
     "prepare": "husky || true",
     "build": "turbo build",
@@ -32,31 +40,31 @@
   },
   "dependencies": {
     "@dnlup/fastify-traps": "^3.1.0",
-    "@fastify/swagger": "^9.4.0",
-    "@fastify/swagger-ui": "^5.2.0",
-    "@keyv/compress-brotli": "^2.0.2",
-    "cache-manager": "^6.3.2",
-    "consola": "^3.2.3",
+    "@fastify/swagger": "^9.6.1",
+    "@fastify/swagger-ui": "^5.2.3",
+    "@keyv/compress-brotli": "^2.0.5",
+    "cache-manager": "^7.2.7",
+    "consola": "^3.4.2",
     "dayjs": "^1.11.13",
     "fastify": "^5.2.1",
-    "fastify-type-provider-zod": "^4.0.2",
+    "fastify-type-provider-zod": "^6.1.0",
     "fetch-retry": "^6.0.0",
-    "keyv": "^5.2.3",
-    "keyv-file": "^5.1.1",
+    "keyv": "^5.5.5",
+    "keyv-file": "^5.3.3",
     "node-geocoder": "^4.4.1",
-    "p-queue": "^8.0.1",
-    "pretty-format": "^29.7.0",
-    "quick-lru": "^7.0.0",
-    "zod": "^3.24.1"
+    "p-queue": "^9.0.1",
+    "pretty-format": "^30.2.0",
+    "quick-lru": "^7.3.0",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.10",
-    "@commitlint/cli": "^19.6.1",
-    "@commitlint/config-conventional": "^19.6.0",
-    "@release-it/bumper": "^6.0.1",
-    "@tsconfig/node18": "^18.2.4",
-    "@types/node": "^22.10.5",
-    "@vitest/coverage-v8": "^3.0.4",
+    "@commitlint/cli": "^20.2.0",
+    "@commitlint/config-conventional": "^20.2.0",
+    "@release-it/bumper": "^7.0.5",
+    "@tsconfig/node18": "^18.2.6",
+    "@types/node": "^25.0.3",
+    "@vitest/coverage-v8": "^4.0.16",
     "auto-changelog": "^2.5.0",
     "commitizen": "^4.3.1",
     "cz-conventional-changelog": "^3.3.0",
@@ -64,14 +72,14 @@
     "husky": "^9.1.7",
     "npm-run-all": "^4.1.5",
     "release-it": "^19.0.0",
-    "shx": "^0.3.4",
-    "tsc-alias": "^1.8.10",
-    "tsup": "^8.3.5",
-    "tsx": "^4.19.2",
-    "turbo": "^2.3.3",
-    "type-fest": "^4.33.0",
-    "typescript": "^5.7.2",
-    "vitest": "^3.0.4"
+    "shx": "^0.4.0",
+    "tsc-alias": "^1.8.16",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "turbo": "^2.7.2",
+    "type-fest": "^5.3.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
   },
   "config": {
     "commitizen": {
@@ -95,7 +103,9 @@
       "releaseName": "v${version}"
     },
     "hooks": {
-      "before:init": ["turbo lint test"],
+      "before:init": [
+        "turbo lint test"
+      ],
       "after:bump": [
         "yarn install",
         "turbo build",
@@ -104,7 +114,11 @@
     },
     "plugins": {
       "@release-it/bumper": {
-        "out": ["package.json", "packages/core/package.json", "packages/cli/package.json"]
+        "out": [
+          "package.json",
+          "packages/core/package.json",
+          "packages/cli/package.json"
+        ]
       }
     }
   }
