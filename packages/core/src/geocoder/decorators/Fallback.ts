@@ -23,6 +23,7 @@ export class Fallback implements Geocoder {
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
     return this.geocoder
       .search(q, options)
-      .then((address) => address ?? this.fallback.search(q, options));
+      .then((address) => address ?? this.fallback.search(q, options))
+      .catch(() => this.fallback.search(q, options));
   }
 }
