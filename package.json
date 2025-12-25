@@ -1,6 +1,6 @@
 {
   "name": "@gittrends-app/geocoder",
-  "version": "5.0.8",
+  "version": "5.0.9",
   "private": true,
   "license": "MIT",
   "repository": {
@@ -102,8 +102,7 @@
       "web": true,
       "autoGenerate": true,
       "release": true,
-      "releaseName": "v${version}",
-      "releaseNotes": "auto-changelog -p"
+      "releaseName": "v${version}"
     },
     "hooks": {
       "before:init": [
