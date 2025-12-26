@@ -36,9 +36,5 @@
     "@vitest/coverage-v8": "^4.0.16",
     "vitest": "^4.0.16"
   },
-  "files": [
-    "dist",
-    "package.json",
-    "README.md"
-  ]
+  "files": ["dist", "package.json", "README.md"]
 }
