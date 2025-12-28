@@ -1,7 +1,10 @@
+import Debug from 'debug';
 import { Address, AddressSchema } from '../entities/Address.js';
 import fetch from '../helpers/fetch.js';
 import { Throttler } from './decorators/Throttler.js';
 import { Geocoder } from './Geocoder.js';
+
+const debug = Debug('geocoder:proton');
 
 /**
  * Base for Proton geocoder service
@@ -10,7 +13,9 @@ class BaseProton implements Geocoder {
   /**
    * Constructor that creates the geocoder service
    */
-  constructor() {}
+  constructor() {
+    debug('initialized');
+  }
 
   /**
    * Search for addresses
@@ -18,10 +23,14 @@ class BaseProton implements Geocoder {
    * @returns Promise<Address | null> - The address found or null
    */
   async search(q: string): Promise<Address | null> {
+    debug('searching for: %s', q);
     const res = await fetch(
       `https://photon.komoot.io/api/?q=${q}&layer=city&layer=state&layer=country&layer=other&osm_tag=place&lang=en`
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      debug('request failed with status: %d', res.status);
+      return null;
+    }
 
     const data = (await res.json()) as {
       features: Array<{
@@ -41,9 +50,12 @@ class BaseProton implements Geocoder {
     };
 
     const [location] = data.features || [];
-    if (!location) return null;
+    if (!location) {
+      debug('no results found for: %s', q);
+      return null;
+    }
 
-    return AddressSchema.parse({
+    const result = AddressSchema.parse({
       source: q,
       name: location.properties.name,
       type: location.properties.osm_value,
@@ -53,6 +65,8 @@ class BaseProton implements Geocoder {
       state: location.properties.state,
       city: location.properties.type === 'city' ? location.properties.name : undefined
     });
+    debug('found address: %s', result.name);
+    return result;
   }
 }
 

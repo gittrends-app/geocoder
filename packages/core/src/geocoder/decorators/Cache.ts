@@ -1,11 +1,14 @@
 import { constants } from 'node:zlib';
 import KeyvBrotli from '@keyv/compress-brotli';
 import { Cache as CacheManager, CreateCacheOptions, createCache } from 'cache-manager';
+import Debug from 'debug';
 import Keyv, { KeyvOptions } from 'keyv';
 import QuickLRU from 'quick-lru';
 import { Address } from '../../entities/Address.js';
 import { Geocoder } from '../Geocoder.js';
 import { Decorator } from './Decorator.js';
+
+const debug = Debug('geocoder:cache');
 
 /**
  *  Cached service decorator
@@ -21,6 +24,12 @@ export class Cache extends Decorator {
     options: { size?: number; ttl?: number; namespace?: string; secondary?: KeyvOptions }
   ) {
     super(service);
+    debug(
+      'initializing with size=%d, ttl=%d, namespace=%s',
+      options.size || 1000,
+      options.ttl || 0,
+      options.namespace || 'default'
+    );
 
     const stores: CreateCacheOptions['stores'] = [
       // In-memory cache with LRU
@@ -57,10 +66,14 @@ export class Cache extends Decorator {
    */
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
     const cached = await this.cache.get<Address | false>(q);
-    if (cached) return cached;
+    if (cached) {
+      debug('cache hit for: %s', q);
+      return cached;
+    }
 
     return this.geocoder.search(q, options).then(async (address) => {
       await this.cache.set(q, address || false);
+      debug('cached result for: %s', q);
       return address;
     });
   }
