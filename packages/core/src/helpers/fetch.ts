@@ -11,6 +11,7 @@ import fetch, { RequestInfo, RequestInit } from 'node-fetch';
 export default async function (url: string | URL | RequestInfo, options?: RequestInit) {
   const response = await fetchRetry(fetch)(url, {
     retries: 3,
+    retryDelay: (attempt, error) => (error ? 1000 : Math.pow(2, attempt) * 500),
     retryOn: (_, error, response) => {
       return (
         error != null || (response && /^(418|429|5\d{2})$/.test(String(response.status))) || false
