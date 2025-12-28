@@ -13,7 +13,7 @@ export default async function (url: string | URL | RequestInfo, options?: Reques
     retries: 3,
     retryOn: (_, error, response) => {
       return (
-        error != null || (response && (response.status === 429 || response.status >= 500)) || false
+        error != null || (response && /^(418|429|5\d{2})$/.test(String(response.status))) || false
       );
     },
     ...options
