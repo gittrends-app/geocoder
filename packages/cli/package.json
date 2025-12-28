@@ -1,6 +1,6 @@
 {
   "name": "@gittrends-app/geocoder-cli",
-  "version": "5.0.11",
+  "version": "5.1.0",
   "main": "./dist/cli.js",
   "types": "./dist/cli.d.ts",
   "type": "module",
