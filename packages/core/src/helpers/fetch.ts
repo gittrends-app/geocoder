@@ -21,8 +21,9 @@ export default async function (url: string | URL | RequestInfo, options?: Reques
         error != null || (response && /^(418|429|5\d{2})$/.test(String(response.status))) || false
       );
     },
+    ...options,
     signal: AbortSignal.timeout(10000),
-    ...options
+    timeout: 10000
   });
   if (response.status) Object.assign(response, { statusCode: response.status });
   debug('response status: %d for %s', response.status, url);
