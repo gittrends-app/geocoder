@@ -21,6 +21,7 @@ export default async function (url: string | URL | RequestInfo, options?: Reques
         error != null || (response && /^(418|429|5\d{2})$/.test(String(response.status))) || false
       );
     },
+    signal: AbortSignal.timeout(10000),
     ...options
   });
   if (response.status) Object.assign(response, { statusCode: response.status });
