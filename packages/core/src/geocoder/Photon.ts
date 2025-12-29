@@ -42,7 +42,7 @@ class BasePhoton implements Geocoder {
   async search(q: string): Promise<Address | null> {
     debug('searching for: %s', q);
 
-    const data = await fetch<PhotonSearchResult>(
+    const response = await fetch<PhotonSearchResult>(
       `https://photon.komoot.io/api/?${new URLSearchParams([
         ['q', q],
         ['layer', 'city'],
@@ -52,7 +52,14 @@ class BasePhoton implements Geocoder {
         ['osm_tag', 'place'],
         ['lang', 'en']
       ]).toString()}`
-    ).json();
+    );
+
+    if (response.status === 403) {
+      debug('photon blocked the request');
+      return null;
+    }
+
+    const data = await response.json();
 
     const [location] = data.features || [];
     if (!location) {

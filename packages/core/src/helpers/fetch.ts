@@ -22,7 +22,7 @@ export default function <T>(url: string | URL, options?: FetchOptions) {
       shouldRetry: ({ error }) => (error ? true : undefined)
     },
     timeout: options?.timeout ?? 10000,
-    throwHttpErrors: (status) => /^(418|429|5\d{2})$/.test(String(status)),
+    throwHttpErrors: (status) => /^(403|418|429|5\d{2})$/.test(String(status)),
     headers: { 'User-Agent': 'gittrends-geocoder', ...options?.headers },
     ...options
   });

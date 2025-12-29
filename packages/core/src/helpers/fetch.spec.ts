@@ -141,6 +141,19 @@ describe('fetch helper', () => {
       expect(scope.isDone()).toBe(true);
     });
 
+    it('should retry on 403 forbidden', async () => {
+      const scope = nock('https://api.example.com')
+        .get('/data')
+        .reply(403, 'Forbidden')
+        .get('/data')
+        .reply(200, { success: true });
+
+      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
+
+      expect(response.status).toBe(200);
+      expect(scope.isDone()).toBe(true);
+    });
+
     it('should retry on 429 rate limit', async () => {
       const scope = nock('https://api.example.com')
         .get('/data')
