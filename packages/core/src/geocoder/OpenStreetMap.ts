@@ -67,8 +67,7 @@ class BaseOpenStreetMap implements Geocoder {
     );
 
     const response = await fetch<NominatimSearchResult[]>(
-      `https://nominatim.openstreetmap.org/search?${params.toString()}`,
-      { headers: { 'User-Agent': this.options.userAgent || 'gittrends-geocoder' } }
+      `https://nominatim.openstreetmap.org/search?${params.toString()}`
     ).json();
 
     if (response.length === 0) {
