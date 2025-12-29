@@ -1,6 +1,6 @@
 {
   "name": "@gittrends-app/geocoder",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -38,5 +38,9 @@
     "@vitest/coverage-v8": "^4.0.16",
     "vitest": "^4.0.16"
   },
-  "files": ["dist", "package.json", "README.md"]
+  "files": [
+    "dist",
+    "package.json",
+    "README.md"
+  ]
 }
