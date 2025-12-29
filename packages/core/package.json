@@ -36,6 +36,7 @@
     "@types/debug": "^4.1.12",
     "@types/node-geocoder": "^4.2.6",
     "@vitest/coverage-v8": "^4.0.16",
+    "nock": "^14.0.10",
     "vitest": "^4.0.16"
   },
   "files": [
