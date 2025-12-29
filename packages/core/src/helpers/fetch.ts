@@ -1,8 +1,9 @@
 import Debug from 'debug';
-import fetchRetry from 'fetch-retry';
-import fetch, { RequestInfo, RequestInit, Response } from 'node-fetch';
+import fetch from 'ky';
 
 const debug = Debug('geocoder:fetch');
+
+export type FetchOptions = RequestInit & { timeout?: number };
 
 /**
  *  Fetch with retry
@@ -11,23 +12,17 @@ const debug = Debug('geocoder:fetch');
  * @param options
  * @returns
  */
-export default async function (
-  url: string | URL | RequestInfo,
-  options?: RequestInit
-): Promise<Response & { statusCode?: number }> {
+export default function <T>(url: string | URL, options?: FetchOptions) {
   debug('fetching: %s', url);
-  const response = await fetchRetry(fetch)(url, {
-    retries: 3,
-    retryDelay: (attempt) => Math.pow(2, attempt) * 500,
-    retryOn: (_, error, response) => {
-      return (
-        error != null || (response && /^(418|429|5\d{2})$/.test(String(response.status))) || false
-      );
+
+  return fetch<T>(url, {
+    retry: {
+      limit: 3,
+      delay: (attemptCount) => Math.pow(2, attemptCount) * 1000,
+      shouldRetry: ({ error }) => (error ? true : undefined)
     },
     timeout: options?.timeout ?? 10000,
+    throwHttpErrors: (status) => /^(418|429|5\d{2})$/.test(String(status)),
     ...options
   });
-  if (response.status) Object.assign(response, { statusCode: response.status });
-  debug('response status: %d for %s', response.status, url);
-  return response;
 }

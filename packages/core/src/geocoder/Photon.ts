@@ -6,6 +6,23 @@ import { Geocoder } from './Geocoder.js';
 
 const debug = Debug('geocoder:Photon');
 
+type PhotonSearchResult = {
+  features?: Array<{
+    properties: {
+      osm_type: string;
+      osm_id: number;
+      osm_key: string;
+      osm_value: string;
+      name: string;
+      type: string;
+      country?: string;
+      countrycode?: string;
+      county?: string;
+      state?: string;
+    };
+  }>;
+};
+
 /**
  * Base for Photon geocoder service
  */
@@ -24,30 +41,10 @@ class BasePhoton implements Geocoder {
    */
   async search(q: string): Promise<Address | null> {
     debug('searching for: %s', q);
-    const res = await fetch(
-      `https://photon.komoot.io/api/?q=${q}&layer=city&layer=state&layer=country&layer=other&osm_tag=place&lang=en`
-    );
-    if (!res.ok) {
-      debug('request failed with status: %d', res.status);
-      return null;
-    }
 
-    const data = (await res.json()) as {
-      features: Array<{
-        properties: {
-          osm_type: string;
-          osm_id: number;
-          osm_key: string;
-          osm_value: string;
-          name: string;
-          type: string;
-          country?: string;
-          countrycode?: string;
-          county?: string;
-          state?: string;
-        };
-      }>;
-    };
+    const data = await fetch<PhotonSearchResult>(
+      `https://photon.komoot.io/api/?q=${q}&layer=city&layer=state&layer=country&layer=other&osm_tag=place&lang=en`
+    ).json();
 
     const [location] = data.features || [];
     if (!location) {

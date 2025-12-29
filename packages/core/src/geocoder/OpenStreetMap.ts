@@ -1,6 +1,4 @@
 import Debug from 'debug';
-import { RequestInfo, RequestInit } from 'node-fetch';
-import geocoder from 'node-geocoder';
 import type { MergeExclusive } from 'type-fest';
 import { Address, AddressSchema } from '../entities/Address.js';
 import fetch from '../helpers/fetch.js';
@@ -14,32 +12,39 @@ type BaseOpenStreetMapOptions = { minConfidence: number } & MergeExclusive<
   { email: string; userAgent: string }
 >;
 
+type NominatimSearchResult = {
+  place_id: number;
+  osm_type: 'node' | 'way' | 'relation';
+  osm_id: number;
+  lat: string;
+  lon: string;
+  display_name: string;
+  type?: string;
+  class?: string;
+  importance?: number;
+  boundingbox?: [string, string, string, string];
+  address?: {
+    house_number?: string;
+    road?: string;
+    suburb?: string;
+    city?: string;
+    county?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+    country_code?: string;
+  };
+};
+
 /**
  * Base for OpenStreetMap geocoder service
  */
 class BaseOpenStreetMap implements Geocoder {
-  private geocoderService;
-
   /**
    * Constructor that creates the geocoder service
    */
   constructor(private options: BaseOpenStreetMapOptions) {
     debug('initializing with options: %O', options);
-    this.geocoderService = geocoder({
-      provider: 'openstreetmap',
-      osmServer: options.osmServer,
-      email: options.email,
-      language: 'en-US',
-      fetch: function (url: RequestInfo, fetchOptions?: RequestInit) {
-        return fetch(url, {
-          ...fetchOptions,
-          headers: {
-            ...fetchOptions?.headers,
-            'User-Agent': options.userAgent || 'gittrends-geocoder'
-          }
-        });
-      }
-    });
   }
 
   /**
@@ -49,38 +54,40 @@ class BaseOpenStreetMap implements Geocoder {
    */
   async search(q: string): Promise<Address | null> {
     debug('searching for: %s', q);
-    // @ts-expect-error: geocode method does not match expected types
-    const response = await this.geocoderService.geocode({ q, limit: 5 });
+    const params = new URLSearchParams(
+      [
+        ['language', 'en-US'],
+        ['osmServer', this.options.osmServer || ''],
+        ['addressdetails', '1'],
+        ['q', q],
+        ['limit', '5'],
+        ['format', 'json'],
+        ['email', this.options.email || '']
+      ].filter(([, v]) => v !== '')
+    );
+
+    const response = await fetch<NominatimSearchResult[]>(
+      `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+      { headers: { 'User-Agent': this.options.userAgent || 'gittrends-geocoder' } }
+    ).json();
 
     if (response.length === 0) {
       debug('no results found for: %s', q);
       return null;
     }
 
-    const raw = response['raw' as any] as {
-      [k: string]: any;
-      class?: string;
-      type?: string;
-      importance: number;
-    }[];
-    const maxIndex = raw.findIndex(
-      (r) =>
-        r.importance ===
-          Math.max(
-            ...raw
-              .filter((r) => r.class === 'place' || r.class === 'boundary')
-              .map((r) => r.importance)
-          ) &&
-        (r.class === 'place' || r.class === 'boundary')
-    );
+    const location = response
+      .filter((r) => r.importance && r.importance >= this.options.minConfidence)
+      .filter((r) => r.class === 'place' || r.class === 'boundary')
+      .reduce(
+        (prev, current) => (!prev || current.importance! > prev.importance! ? current : prev),
+        undefined as NominatimSearchResult | undefined
+      );
 
-    const address = response[maxIndex];
-    const rawAddress = raw[maxIndex];
-
-    if (!address || rawAddress.importance < this.options.minConfidence) {
+    if (!location || !location.address) {
       debug(
         'address filtered: confidence %.3f < %.3f',
-        rawAddress?.importance || 0,
+        location?.importance,
         this.options.minConfidence
       );
       return null;
@@ -88,15 +95,15 @@ class BaseOpenStreetMap implements Geocoder {
 
     const result = AddressSchema.parse({
       source: q,
-      name:
-        [address.country, address.state, address.city].filter(Boolean).join(', ') ||
-        address.formattedAddress,
-      type: rawAddress.addresstype,
-      confidence: rawAddress.importance,
-      country: address.country,
-      country_code: address.countryCode,
-      state: address.state,
-      city: address.city
+      name: [location.address.country, location.address.state, location.address.city]
+        .filter(Boolean)
+        .join(', '),
+      type: location.type,
+      confidence: location.importance,
+      country: location.address.country,
+      country_code: location.address.country_code,
+      state: location.address.state,
+      city: location.address.city
     });
     debug('found address: %s (confidence: %.3f)', result.name, result.confidence);
     return result;
