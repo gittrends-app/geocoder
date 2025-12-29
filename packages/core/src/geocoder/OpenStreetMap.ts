@@ -54,20 +54,18 @@ class BaseOpenStreetMap implements Geocoder {
    */
   async search(q: string): Promise<Address | null> {
     debug('searching for: %s', q);
-    const params = new URLSearchParams(
-      [
-        ['language', 'en-US'],
-        ['osmServer', this.options.osmServer || ''],
-        ['addressdetails', '1'],
-        ['q', q],
-        ['limit', '5'],
-        ['format', 'json'],
-        ['email', this.options.email || '']
-      ].filter(([, v]) => v !== '')
-    );
-
     const response = await fetch<NominatimSearchResult[]>(
-      `https://nominatim.openstreetmap.org/search?${params.toString()}`
+      `https://nominatim.openstreetmap.org/search?${new URLSearchParams(
+        [
+          ['language', 'en-US'],
+          ['osmServer', this.options.osmServer || ''],
+          ['addressdetails', '1'],
+          ['q', q],
+          ['limit', '5'],
+          ['format', 'json'],
+          ['email', this.options.email || '']
+        ].filter(([, v]) => v !== '')
+      ).toString()}`
     ).json();
 
     if (response.length === 0) {
