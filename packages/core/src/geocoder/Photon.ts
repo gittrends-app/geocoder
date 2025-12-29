@@ -1,4 +1,5 @@
 import Debug from 'debug';
+import { HTTPError } from 'ky';
 import { Address, AddressSchema } from '../entities/Address.js';
 import fetch from '../helpers/fetch.js';
 import { Throttler } from './decorators/Throttler.js';
@@ -42,7 +43,7 @@ class BasePhoton implements Geocoder {
   async search(q: string): Promise<Address | null> {
     debug('searching for: %s', q);
 
-    const response = await fetch<PhotonSearchResult>(
+    const data = await fetch<PhotonSearchResult>(
       `https://photon.komoot.io/api/?${new URLSearchParams([
         ['q', q],
         ['layer', 'city'],
@@ -52,14 +53,15 @@ class BasePhoton implements Geocoder {
         ['osm_tag', 'place'],
         ['lang', 'en']
       ]).toString()}`
-    );
-
-    if (response.status === 403) {
-      debug('photon blocked the request');
-      return null;
-    }
-
-    const data = await response.json();
+    )
+      .then((res) => res?.json())
+      .catch((error) => {
+        if (error instanceof HTTPError && error.response.status === 403) {
+          debug('photon blocked the request for: %s', q);
+          return { features: [] } as PhotonSearchResult;
+        }
+        throw error;
+      });
 
     const [location] = data.features || [];
     if (!location) {
