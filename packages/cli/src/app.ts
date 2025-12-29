@@ -17,7 +17,7 @@ import {
   Fallback,
   OpenStreetMap,
   OpenStreetMapOptions,
-  Proton
+  Photon
 } from '@/core';
 import pJson from '../package.json' with { type: 'json' };
 
@@ -58,7 +58,7 @@ export function createApp(options: AppOptions): FastifyInstance {
   });
 
   const geocoder = new Cache(
-    new Fallback(new OpenStreetMap(options.geocoder), new Proton(options.geocoder)),
+    new Fallback(new OpenStreetMap(options.geocoder), new Photon(options.geocoder)),
     {
       namespace: 'geocoder-cache-cli',
       size: options.cache?.size,

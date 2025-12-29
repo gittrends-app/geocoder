@@ -4,4 +4,4 @@ export * from './decorators/Throttler.js';
 
 export * from './Geocoder.js';
 export * from './OpenStreetMap.js';
-export * from './Proton.js';
+export * from './Photon.js';

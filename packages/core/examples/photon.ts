@@ -1,30 +1,30 @@
 import consola from 'consola';
 import prettyformat from 'pretty-format';
-import { Proton } from '../src/geocoder/Proton.js';
+import { Photon } from '../src/geocoder/Photon.js';
 
 (async function main() {
-  // Create a new instance of the Proton service
-  const proton = new Proton({ concurrency: 2 });
+  // Create a new instance of the Photon service
+  const photon = new Photon({ concurrency: 2 });
 
   // Some examples of addresses for testing
 
-  let response = await proton.search('Europe');
+  let response = await photon.search('Europe');
   consola.info(prettyformat(response, { min: true }));
   // output: {"confidence": 0, "name": "Europe", "source": "Europe", "type": "continent"}
 
-  response = await proton.search('Earth planet');
+  response = await photon.search('Earth planet');
   consola.info(prettyformat(response, { min: true }));
   // output: null
 
-  response = await proton.search('United Kingdom');
+  response = await photon.search('United Kingdom');
   consola.info(prettyformat(response, { min: true }));
   // output: {"confidence": 0, "country": "United Kingdom", "country_code": "GB", "name": "United Kingdom", "source": "United Kingdom", "type": "country"}
 
-  response = await proton.search('Brazil');
+  response = await photon.search('Brazil');
   consola.info(prettyformat(response, { min: true }));
   // output: {"confidence": 0, "country": "Brasil", "country_code": "BR", "name": "Brasil", "source": "Brazil", "type": "country"}
 
-  response = await proton.search('São Paulo, BR');
+  response = await photon.search('São Paulo, BR');
   consola.info(prettyformat(response, { min: true }));
   // output: {"city": "São Paulo", "confidence": 0, "country": "Brasil", "country_code": "BR", "name": "São Paulo", "source": "São Paulo, BR", "state": "São Paulo", "type": "municipality"}
 })();

@@ -4,12 +4,12 @@ import fetch from '../helpers/fetch.js';
 import { Throttler } from './decorators/Throttler.js';
 import { Geocoder } from './Geocoder.js';
 
-const debug = Debug('geocoder:proton');
+const debug = Debug('geocoder:Photon');
 
 /**
- * Base for Proton geocoder service
+ * Base for Photon geocoder service
  */
-class BaseProton implements Geocoder {
+class BasePhoton implements Geocoder {
   /**
    * Constructor that creates the geocoder service
    */
@@ -71,14 +71,14 @@ class BaseProton implements Geocoder {
 }
 
 /**
- * Proton geocoder service
+ * Photon geocoder service
  */
-export class Proton extends Throttler implements Geocoder {
+export class Photon extends Throttler implements Geocoder {
   /**
    * Constructor that consider API limits
    * @param options - Service options
    */
   constructor({ concurrency }: { concurrency: number }) {
-    super(new BaseProton(), { concurrency, intervalCap: 1000 });
+    super(new BasePhoton(), { concurrency, intervalCap: 1000 });
   }
 }
