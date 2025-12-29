@@ -43,7 +43,15 @@ class BasePhoton implements Geocoder {
     debug('searching for: %s', q);
 
     const data = await fetch<PhotonSearchResult>(
-      `https://photon.komoot.io/api/?q=${q}&layer=city&layer=state&layer=country&layer=other&osm_tag=place&lang=en`
+      `https://photon.komoot.io/api/?${new URLSearchParams([
+        ['q', q],
+        ['layer', 'city'],
+        ['layer', 'state'],
+        ['layer', 'country'],
+        ['layer', 'other'],
+        ['osm_tag', 'place'],
+        ['lang', 'en']
+      ]).toString()}`
     ).json();
 
     const [location] = data.features || [];
