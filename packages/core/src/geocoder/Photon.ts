@@ -13,8 +13,8 @@ type PhotonSearchResult = {
       osm_id: number;
       osm_key: string;
       osm_value: string;
-      name: string;
-      type: string;
+      name?: string;
+      type?: string;
       country?: string;
       countrycode?: string;
       county?: string;
@@ -62,7 +62,11 @@ class BasePhoton implements Geocoder {
 
     const result = AddressSchema.parse({
       source: q,
-      name: location.properties.name,
+      name:
+        location.properties.name ||
+        [location.properties.country, location.properties.state, location.properties.country]
+          .filter(Boolean)
+          .join(', '),
       type: location.properties.osm_value,
       confidence: 0,
       country: location.properties.country,
