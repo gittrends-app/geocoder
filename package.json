@@ -1,6 +1,6 @@
 {
   "name": "@gittrends-app/geocoder",
-  "version": "5.4.3",
+  "version": "5.4.4",
   "private": true,
   "license": "MIT",
   "repository": {
@@ -14,20 +14,12 @@
     "gittrends-geocoder": "./packages/cli/dist/cli.js"
   },
   "type": "module",
-  "files": [
-    "packages/core/dist",
-    "packages/cli/dist",
-    "package.json",
-    "README.md"
-  ],
+  "files": ["packages/core/dist", "packages/cli/dist", "package.json", "README.md"],
   "engines": {
     "node": ">=18.0.0"
   },
   "packageManager": "yarn@1.22.22",
-  "workspaces": [
-    "packages/core",
-    "packages/cli"
-  ],
+  "workspaces": ["packages/core", "packages/cli"],
   "scripts": {
     "prepare": "husky || true",
     "build": "turbo build",
@@ -105,21 +97,17 @@
       "releaseName": "v${version}"
     },
     "hooks": {
-      "before:init": [
-        "turbo lint test"
-      ],
+      "before:init": ["turbo lint test"],
       "after:bump": [
+        "yarn format",
         "yarn install",
         "turbo build",
-        "git add yarn.lock packages/core/package.json packages/cli/package.json"
+        "git add packages/core/package.json packages/cli/package.json"
       ]
     },
     "plugins": {
       "@release-it/bumper": {
-        "out": [
-          "packages/core/package.json",
-          "packages/cli/package.json"
-        ]
+        "out": ["packages/core/package.json", "packages/cli/package.json"]
       }
     }
   }
