@@ -4,6 +4,7 @@
 # custom
 .turbo
 package-lock.json
+yarn.lock
 
 ### Node ###
 # Logs
