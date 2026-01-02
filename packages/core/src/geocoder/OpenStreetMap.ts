@@ -20,7 +20,7 @@ type NominatimSearchResult = {
   lon: string;
   display_name: string;
   type?: string;
-  class?: string;
+  category?: string;
   importance?: number;
   boundingbox?: [string, string, string, string];
   address?: {
@@ -55,15 +55,14 @@ class BaseOpenStreetMap implements Geocoder {
   async search(q: string): Promise<Address | null> {
     debug('searching for: %s', q);
     const response = await fetch<NominatimSearchResult[]>(
-      `https://nominatim.openstreetmap.org/search?${new URLSearchParams(
+      `${this.options.osmServer || 'https://nominatim.openstreetmap.org'}/search?${new URLSearchParams(
         [
-          ['language', 'en-US'],
-          ['osmServer', this.options.osmServer || ''],
-          ['addressdetails', '1'],
           ['q', q],
+          ['addressdetails', '1'],
+          ['accept-language', 'en-US'],
           ['limit', '5'],
-          ['format', 'json'],
-          ['email', this.options.email || '']
+          ['email', this.options.email || ''],
+          ['format', 'jsonv2']
         ].filter(([, v]) => v !== '')
       ).toString()}`
     ).json();
@@ -75,7 +74,7 @@ class BaseOpenStreetMap implements Geocoder {
 
     const location = response
       .filter((r) => r.importance && r.importance >= this.options.minConfidence)
-      .filter((r) => r.class === 'place' || r.class === 'boundary')
+      .filter((r) => r.category === 'place' || r.category === 'boundary')
       .reduce(
         (prev, current) => (!prev || current.importance! > prev.importance! ? current : prev),
         undefined as NominatimSearchResult | undefined

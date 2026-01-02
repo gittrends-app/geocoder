@@ -11,7 +11,7 @@ export const AddressSchema = z.preprocess(
     type: z.string().describe('The address type'),
     confidence: z.coerce.number().describe('The confidence level'),
     country: z.string().optional().describe('The country name'),
-    country_code: z.string().optional().describe('The country code'),
+    country_code: z.string().toUpperCase().optional().describe('The country code'),
     state: z.string().optional().describe('The state name'),
     city: z.string().optional().describe('The city name')
   })
