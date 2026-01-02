@@ -36,7 +36,7 @@ program
       .env('CACHE_SIZE')
       .argParser(Number)
   )
-  .addOption(new Option('-h, --host [HOST]', 'Host to listen on').default(env.HOST).env('HOST'))
+  .addOption(new Option('-H, --host [HOST]', 'Host to listen on').default(env.HOST).env('HOST'))
   .addOption(
     new Option('-p, --port [PORT]', 'Port to listen on')
       .default(env.PORT)

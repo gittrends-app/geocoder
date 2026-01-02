@@ -74,7 +74,7 @@ class BaseOpenStreetMap implements Geocoder {
 
     const location = response
       .filter((r) => r.importance && r.importance >= this.options.minConfidence)
-      .filter((r) => r.category === 'place' || r.category === 'boundary')
+      .filter((r) => ['place', 'boundary'].includes(r.category!))
       .reduce(
         (prev, current) => (!prev || current.importance! > prev.importance! ? current : prev),
         undefined as NominatimSearchResult | undefined

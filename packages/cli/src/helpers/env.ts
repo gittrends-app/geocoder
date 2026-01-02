@@ -1,5 +1,3 @@
-import { homedir } from 'node:os';
-import { resolve } from 'node:path';
 import z from 'zod';
 
 const EnvSchema = z.object({
@@ -9,7 +7,7 @@ const EnvSchema = z.object({
   OSM_SERVER: z.string().default('https://nominatim.openstreetmap.org'),
   OSM_EMAIL: z.email().optional(),
   OSM_USER_AGENT: z.string().optional(),
-  CACHE_DIR: z.string().default(resolve(homedir(), '.cache', 'gittrends-geocoder')),
+  CACHE_DIR: z.string().optional(),
   CACHE_SIZE: z.coerce.number().default(1000)
 });
 

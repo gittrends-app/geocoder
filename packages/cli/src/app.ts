@@ -15,6 +15,7 @@ import {
   AddressSchema,
   Cache,
   Fallback,
+  Geocoder,
   OpenStreetMap,
   OpenStreetMapOptions,
   Photon
@@ -22,8 +23,8 @@ import {
 import pJson from '../package.json' with { type: 'json' };
 
 type AppOptions = {
-  cache: { dirname: string; size?: number };
   geocoder: OpenStreetMapOptions;
+  cache?: Partial<{ dirname: string; size: number }>;
   debug?: boolean;
 };
 
@@ -57,16 +58,20 @@ export function createApp(options: AppOptions): FastifyInstance {
     routePrefix: '/docs'
   });
 
-  const geocoder = new Cache(
-    new Fallback(new OpenStreetMap(options.geocoder), new Photon(options.geocoder)),
-    {
-      namespace: 'geocoder-cache-cli',
-      size: options.cache?.size,
-      secondary: new KeyvFile({
-        filename: path.resolve(options.cache.dirname, 'geocoder-cache.json')
-      })
-    }
+  let geocoder: Geocoder = new Fallback(
+    new OpenStreetMap(options.geocoder),
+    new Photon(options.geocoder)
   );
+
+  if (options.cache && options.cache.size) {
+    geocoder = new Cache(geocoder, {
+      namespace: 'geocoder-cache-cli',
+      size: options.cache.size,
+      secondary: options.cache.dirname
+        ? new KeyvFile({ filename: path.resolve(options.cache.dirname, 'geocoder-cache.json') })
+        : undefined
+    });
+  }
 
   app.after(async () => {
     app.get('/', async (req, res) => {
