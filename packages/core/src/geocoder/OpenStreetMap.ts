@@ -64,7 +64,10 @@ class BaseOpenStreetMap implements Geocoder {
           ['email', this.options.email || ''],
           ['format', 'jsonv2']
         ].filter(([, v]) => v !== '')
-      ).toString()}`
+      ).toString()}`,
+      {
+        headers: this.options.userAgent ? { 'User-Agent': this.options.userAgent } : undefined
+      }
     ).json();
 
     if (response.length === 0) {
