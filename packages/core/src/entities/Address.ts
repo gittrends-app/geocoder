@@ -13,7 +13,8 @@ export const AddressSchema = z.preprocess(
     country: z.string().optional().describe('The country name'),
     country_code: z.string().toUpperCase().optional().describe('The country code'),
     state: z.string().optional().describe('The state name'),
-    city: z.string().optional().describe('The city name')
+    city: z.string().optional().describe('The city name'),
+    provider: z.enum(['openstreetmap', 'photon']).describe('The geocoding provider')
   })
 );
 

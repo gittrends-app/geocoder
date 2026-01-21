@@ -72,6 +72,7 @@ class BasePhoton implements Geocoder {
     }
 
     const result = AddressSchema.parse({
+      provider: 'photon',
       source: q,
       name:
         location.properties.name ||

@@ -93,6 +93,7 @@ class BaseOpenStreetMap implements Geocoder {
     }
 
     const result = AddressSchema.parse({
+      provider: 'openstreetmap',
       source: q,
       name: [location.address.country, location.address.state, location.address.city]
         .filter(Boolean)
