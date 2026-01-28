@@ -128,6 +128,33 @@ export function createApp(options: AppOptions): FastifyInstance {
     routePrefix: '/docs'
   });
 
+  // Add security headers via onSend hook when helmet is not enabled or to ensure
+  // a minimal set of headers is always present. Keep this disabled in tests.
+  const HEADERS_ENABLED = HELMET_ENABLED || process.env.NODE_ENV !== 'test';
+  if (HEADERS_ENABLED) {
+    app.addHook('onSend', async (req, reply, payload) => {
+      try {
+        // HSTS: only set when running in production over HTTPS (best-effort)
+        if (process.env.NODE_ENV === 'production') {
+          reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+        }
+
+        reply.header('X-Frame-Options', 'SAMEORIGIN');
+        reply.header('X-Content-Type-Options', 'nosniff');
+        reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+        // Minimal CSP allowing Swagger UI to function and images from validator
+        reply.header(
+          'Content-Security-Policy',
+          "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: validator.swagger.io; connect-src 'self'"
+        );
+      } catch (err: unknown) {
+        app.log.warn('failed to set security headers: %o', { error: String(err) });
+      }
+      return payload;
+    });
+  }
+
   let geocoder: Geocoder;
   // If a Geocoder instance is provided directly, use it (helps testing). Otherwise build from options.
   if (
