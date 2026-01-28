@@ -1,0 +1,17 @@
+{
+  "id": "docs-security",
+  "title": "Add SECURITY.md and docs/security.md",
+  "description": "Create SECURITY.md at repo root and docs/security.md with security policy, reporting process, supported versions, and notes about the implemented mitigations (rate limiting, validation, headers, CI scans, monitoring). Update README links.",
+  "filesToChange": ["SECURITY.md", "docs/security.md", "README.md"],
+  "estimateHours": 2,
+  "dependencies": [
+    "rate-limit",
+    "input-validation",
+    "security-headers",
+    "ci-security-workflow",
+    "monitoring-metrics"
+  ],
+  "parallel": false,
+  "testsRequired": false,
+  "acceptanceCriteria": "SECURITY.md and docs/security.md added with a clear vulnerability reporting process, list of implemented mitigations, and links to CI/security workflow; PR includes docs changes and is reviewed."
+}

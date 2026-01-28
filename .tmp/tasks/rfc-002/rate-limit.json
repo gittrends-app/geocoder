@@ -1,0 +1,16 @@
+{
+  "id": "rate-limit",
+  "title": "Add application-level rate limiting",
+  "description": "Register and configure @fastify/rate-limit in packages/cli app, make settings configurable via env/AppOptions and add tests to verify limits and bypass toggles.",
+  "filesToChange": [
+    "packages/cli/src/app.ts",
+    "packages/cli/package.json",
+    "packages/cli/src/config.ts",
+    "packages/cli/src/app.spec.ts"
+  ],
+  "estimateHours": 3,
+  "dependencies": [],
+  "parallel": true,
+  "testsRequired": true,
+  "acceptanceCriteria": "Requests exceeding RATE_LIMIT_MAX within RATE_LIMIT_WINDOW receive 429, env toggle RATE_LIMIT_ENABLED=false disables enforcement, and unit tests demonstrate enforcement and disable behavior."
+}

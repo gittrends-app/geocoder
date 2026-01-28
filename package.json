@@ -37,15 +37,15 @@
     "@keyv/compress-brotli": "^2.0.5",
     "cache-manager": "^7.2.7",
     "consola": "^3.4.2",
-    "dayjs": "^1.11.13",
+
     "fastify": "^5.2.1",
     "fastify-type-provider-zod": "^6.1.0",
-    "fetch-retry": "^6.0.0",
+
     "keyv": "^5.5.5",
     "keyv-file": "^5.3.3",
-    "node-geocoder": "^4.4.1",
+
     "p-queue": "^9.0.1",
-    "pretty-format": "^30.2.0",
+
     "quick-lru": "^7.3.0",
     "zod": "^4.2.1"
   },

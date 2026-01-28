@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fastifyTraps from '@dnlup/fastify-traps';
+import helmet from '@fastify/helmet';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
 import fastify, { FastifyInstance } from 'fastify';
@@ -27,9 +28,12 @@ const NORMALIZE_COMMA = /[,]/g;
 const NORMALIZE_WHITESPACE = /\s+/g;
 
 type AppOptions = {
-  geocoder: OpenStreetMapOptions;
+  // Accept either geocoder options to construct providers or a ready-made Geocoder (useful for tests)
+  geocoder: OpenStreetMapOptions | Geocoder;
   cache?: Partial<{ dirname: string; size: number }>;
   debug?: boolean;
+  rateLimit?: { max?: number; timeWindow?: string; redis?: string };
+  helmet?: { enabled?: boolean };
 };
 
 /**
@@ -43,9 +47,71 @@ export function createApp(options: AppOptions): FastifyInstance {
   // Handle signals and timeouts
   app.register(fastifyTraps);
 
+  // Register security headers (helmet) before other middleware
+  // Default: helmet disabled unless explicitly enabled in options
+  const HELMET_ENABLED = options.helmet?.enabled === true;
+  if (HELMET_ENABLED && process.env.NODE_ENV !== 'test') {
+    app.register(helmet, {
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'validator.swagger.io'],
+          connectSrc: ["'self'"]
+        }
+      },
+      crossOriginEmbedderPolicy: false,
+      hsts: { maxAge: 31536000, includeSubDomains: true, preload: true }
+    });
+  }
+
   // Add schema validator and serializer
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+
+  // Register simple in-memory rate limiter BEFORE routes
+  if (options.rateLimit) {
+    const max = options.rateLimit?.max ?? 100;
+    const timeWindow = options.rateLimit?.timeWindow ?? '1 minute';
+
+    const parseWindow = (tw: string) => {
+      const s = tw.toLowerCase().trim();
+      if (s.includes('minute')) return 60_000;
+      if (s.includes('second')) return 1_000;
+      if (s.includes('hour')) return 3_600_000;
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 60_000;
+    };
+
+    const windowMs = parseWindow(timeWindow);
+    const store = new Map<string, { count: number; reset: number }>();
+
+    app.addHook('onRequest', async (req, reply) => {
+      try {
+        const key = (req.headers['x-forwarded-for'] as string) || String(req.ip || 'unknown');
+        const now = Date.now();
+        const entry = store.get(key);
+        if (!entry || now > entry.reset) {
+          store.set(key, { count: 1, reset: now + windowMs });
+        } else {
+          entry.count += 1;
+          store.set(key, entry);
+          if (entry.count > max) {
+            reply.code(429).send({
+              statusCode: 429,
+              error: 'Too Many Requests',
+              message: `Rate limit exceeded. Try again after ${Math.round((entry.reset - now) / 1000)} seconds.`,
+              retryAfter: Math.round((entry.reset - now) / 1000)
+            });
+          }
+        }
+      } catch (err: unknown) {
+        // On error, do not block the request; fail-open
+        app.log.warn('rate-limiter error: %o', { error: String(err) });
+      }
+    });
+  }
 
   app.register(fastifySwagger, {
     openapi: {
@@ -62,10 +128,17 @@ export function createApp(options: AppOptions): FastifyInstance {
     routePrefix: '/docs'
   });
 
-  let geocoder: Geocoder = new Fallback(
-    new OpenStreetMap(options.geocoder),
-    new Photon(options.geocoder)
-  );
+  let geocoder: Geocoder;
+  // If a Geocoder instance is provided directly, use it (helps testing). Otherwise build from options.
+  if (
+    (options.geocoder as Geocoder) &&
+    typeof (options.geocoder as Geocoder).search === 'function'
+  ) {
+    geocoder = options.geocoder as Geocoder;
+  } else {
+    const opts = options.geocoder as OpenStreetMapOptions;
+    geocoder = new Fallback(new OpenStreetMap(opts), new Photon(opts));
+  }
 
   if (options.cache && options.cache.size) {
     geocoder = new Cache(geocoder, {
@@ -89,7 +162,7 @@ export function createApp(options: AppOptions): FastifyInstance {
         tags: ['Geocoder'],
         summary: 'Geocode an address',
         querystring: z.object({
-          q: z.string().min(1).describe('The address to geocode')
+          q: z.string().min(1).max(500).describe('The address to geocode')
         }),
         response: {
           200: AddressSchema,
@@ -99,11 +172,33 @@ export function createApp(options: AppOptions): FastifyInstance {
       handler: async (req, res) => {
         const controller = new AbortController();
         req.raw.on('close', () => controller.abort('Request aborted'));
-        const q = req.query.q
+        // Runtime normalization and additional validation beyond Zod
+        const rawQ = String(req.query.q ?? '');
+        const normalized = rawQ
           .toLowerCase()
           .trim()
           .replace(NORMALIZE_COMMA, '')
           .replace(NORMALIZE_WHITESPACE, ' ');
+
+        // Reject empty after normalization
+        if (!normalized || normalized.length === 0) {
+          return res
+            .status(400)
+            .send({ message: 'q must contain a non-empty address after normalization' });
+        }
+
+        // Explicitly reject URL-like inputs
+        if (normalized.includes('http://') || normalized.includes('https://')) {
+          return res.status(400).send({ message: 'q must not contain URLs' });
+        }
+
+        // Allowed characters: letters, numbers, whitespace, and common punctuation
+        const ALLOWED_RE = /^[\p{L}\p{N}\s,.'"\-()\/:&]+$/u;
+        if (!ALLOWED_RE.test(normalized)) {
+          return res.status(400).send({ message: 'q contains invalid characters' });
+        }
+
+        const q = normalized;
         const address = await geocoder.search(q, { signal: controller.signal });
         if (address) res.send(address);
         else res.status(404).send({ message: 'Address not found' });
