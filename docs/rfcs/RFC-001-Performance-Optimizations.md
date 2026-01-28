@@ -135,6 +135,14 @@ export class Cache extends Decorator {
 - Protects against rate limit violations
 - Minimal memory overhead (Map cleared after each request)
 
+**Notes on sentinel & cancellation semantics**:
+
+- **Negative cache sentinel**: The implementation uses `false` as a negative-cache sentinel to indicate "not found". Cache reads check for `cached !== undefined` so a stored `false` is treated as a valid cached value and returned to callers as `null` (mapping `false -> null`). Update cache storage if you prefer `null` instead of `false`.
+
+- **AbortSignal behavior**: Deduplicated requests share the same underlying promise. The incoming AbortSignal is forwarded to the underlying `geocoder.search` call when available. This means cancellation is cooperative: if the underlying geocoder supports AbortSignal, aborting one caller may cancel the underlying request for all concurrent callers. If per-caller independent cancellation is desired, consider wrapping the shared promise and handling individual aborts or implementing per-caller fetch controllers (higher complexity).
+
+- **Pending map robustness**: The implementation ensures `pending.delete(q)` runs in `finally()` to avoid leaks. For long-running providers or misbehaving code, consider adding a TTL or max-size guard to the `pending` Map.
+
 ### 4. Optimize Regex Compilation (P1)
 
 **Current Code** (`packages/cli/src/app.ts:98`):
