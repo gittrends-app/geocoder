@@ -38,6 +38,19 @@ export class Throttler extends Decorator {
       this.queue.size,
       this.queue.pending
     );
-    return this.queue.add(() => this.geocoder.search(q), options) as Promise<Address | null>;
+    // Respect abort before queueing
+    if (options?.signal?.aborted) {
+      debug('request aborted before queueing: %s', q);
+      throw new Error('Request aborted');
+    }
+
+    return this.queue.add(() => {
+      // Check again when dequeued
+      if (options?.signal?.aborted) {
+        debug('request aborted after dequeue: %s', q);
+        throw new Error('Request aborted');
+      }
+      return this.geocoder.search(q, options);
+    }, options) as Promise<Address | null>;
   }
 }

@@ -67,6 +67,12 @@ export class Cache extends Decorator {
    * @returns Promise<Address | null> - The address found or null
    */
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
+    // Respect abort signal early
+    if (options?.signal?.aborted) {
+      debug('request aborted before cache lookup: %s', q);
+      throw new Error('Request aborted');
+    }
+
     // Check cache explicitly for undefined so that false (negative cache) is respected
     const cached = await this.cache.get<Address | false | undefined>(q);
     if (cached !== undefined) {
@@ -86,12 +92,18 @@ export class Cache extends Decorator {
     const promise = this.geocoder
       .search(q, options)
       .then((address) => {
-        // Fire-and-forget cache write: do not block the response on cache set
-        this.cache
-          .set(q, address || false)
-          .catch((err: Error) =>
-            debug('cache write failed for %s: %s', q, err?.message ?? String(err))
-          );
+        // Don't cache if request was aborted in-flight
+        if (!options?.signal?.aborted) {
+          // Fire-and-forget cache write: do not block the response on cache set
+          this.cache
+            .set(q, address || false)
+            .catch((err: Error) =>
+              debug('cache write failed for %s: %s', q, err?.message ?? String(err))
+            );
+        } else {
+          debug('not caching aborted request for: %s', q);
+        }
+
         return address;
       })
       .finally(() => {
