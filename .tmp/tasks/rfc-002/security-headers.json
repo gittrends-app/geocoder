@@ -11,5 +11,11 @@
   "dependencies": [],
   "parallel": true,
   "testsRequired": true,
+  "status": "implemented",
+  "implementation": {
+    "branch": "feat/security/rfc-002-security-headers",
+    "commit": "8d9b36b",
+    "notes": "Manual onSend hook added to set headers; helmet remains optional. Tests to be added."
+  },
   "acceptanceCriteria": "Responses include security headers (Content-Security-Policy, X-Content-Type-Options, X-Frame-Options, etc.) by default; HELMET_ENABLED=false disables headers; Swagger UI (/docs) continues to load when CSP is enabled. Tests validate headers and docs accessibility."
 }

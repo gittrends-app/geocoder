@@ -11,5 +11,11 @@
   "dependencies": [],
   "parallel": true,
   "testsRequired": true,
+  "status": "implemented",
+  "implementation": {
+    "branch": "feat/security/rfc-002-input-validation",
+    "commit": "cab8ffc",
+    "notes": "Zod schema updated to max 500, runtime normalization and rejection of URLs and invalid characters added. Tests added for rate limiting and validation."
+  },
   "acceptanceCriteria": "Handler validates query param 'q' with Zod (non-empty string) and returns 400 for invalid input. Tests cover valid, empty, and malicious input scenarios."
 }

@@ -13,5 +13,11 @@
   ],
   "parallel": false,
   "testsRequired": false,
+  "status": "implemented",
+  "implementation": {
+    "branch": "main",
+    "commit": "c67bbfe",
+    "notes": "SECURITY.md and docs/security.md added; CI security workflow added in .github/workflows/security.yml."
+  },
   "acceptanceCriteria": "SECURITY.md and docs/security.md added with a clear vulnerability reporting process, list of implemented mitigations, and links to CI/security workflow; PR includes docs changes and is reviewed."
 }

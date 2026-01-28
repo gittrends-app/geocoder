@@ -12,5 +12,11 @@
   "dependencies": [],
   "parallel": true,
   "testsRequired": true,
+  "status": "implemented",
+  "implementation": {
+    "branch": "feat/security/rfc-002-input-validation",
+    "commit": "cab8ffc",
+    "notes": "In-memory rate limiter registered in app.onRequest with configurable max and timeWindow. Tests added to verify blocking behavior."
+  },
   "acceptanceCriteria": "Requests exceeding RATE_LIMIT_MAX within RATE_LIMIT_WINDOW receive 429, env toggle RATE_LIMIT_ENABLED=false disables enforcement, and unit tests demonstrate enforcement and disable behavior."
 }

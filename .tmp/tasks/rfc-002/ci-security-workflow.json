@@ -7,5 +7,11 @@
   "dependencies": ["dependency-fix"],
   "parallel": false,
   "testsRequired": false,
+  "status": "implemented",
+  "implementation": {
+    "branch": "main",
+    "commit": "c67bbfe",
+    "notes": "Added .github/workflows/security.yml that runs yarn install and yarn audit and an optional Snyk step."
+  },
   "acceptanceCriteria": "A workflow file exists at .github/workflows/security.yml that triggers on pull_request and push to main, runs dependency vulnerability checks and the test matrix, and reports failures in CI."
 }

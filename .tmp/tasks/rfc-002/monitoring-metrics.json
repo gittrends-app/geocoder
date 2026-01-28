@@ -11,5 +11,7 @@
   "dependencies": ["rate-limit", "input-validation"],
   "parallel": false,
   "testsRequired": true,
+  "status": "cancelled",
+  "cancellationReason": "Monitoring branch was discarded per request; implementation deferred or moved to backlog.",
   "acceptanceCriteria": "An endpoint /metrics exposes counters for rate_limit_hits, rate_limit_blocks, and validation_failures; counters increment when those events occur (verified by unit/integration tests)."
 }
