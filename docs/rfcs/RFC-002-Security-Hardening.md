@@ -5,6 +5,22 @@
 - **Author**: Code Analysis Agent
 - **Created**: 2026-01-27
 - **Updated**: 2026-01-27
+ - **Updated**: 2026-01-28
+
+## Implementation summary
+
+The following items from this RFC have been implemented and validated in the repository:
+
+- input-validation — feat/security/rfc-002-input-validation (commit: cab8ffc)
+- security-headers — feat/security/rfc-002-security-headers (commit: 8d9b36b)
+- rate-limit — feat/security/rfc-002-input-validation (commit: cab8ffc)
+- docs & CI workflow — main (commit: c67bbfe)
+- dependency-fix — feat/security/rfc-002-input-validation (commit: cab8ffc)
+- monitoring-metrics — cancelled (branch discarded / deferred)
+
+See SECURITY.md and .github/workflows/security.yml for the published policy and CI checks.
+
+- **Status**: 🟢 Implemented
 
 ## Executive Summary
 
