@@ -1,11 +1,10 @@
 # RFC-002: Security Hardening
 
-- **Status**: 🔴 Draft
+- **Status**: ✅ Implemented
 - **Priority**: P0 (Critical)
 - **Author**: Code Analysis Agent
 - **Created**: 2026-01-27
-- **Updated**: 2026-01-27
- - **Updated**: 2026-01-28
+- **Updated**: 2026-01-28
 
 ## Implementation summary
 
@@ -19,8 +18,6 @@ The following items from this RFC have been implemented and validated in the rep
 - monitoring-metrics — cancelled (branch discarded / deferred)
 
 See SECURITY.md and .github/workflows/security.yml for the published policy and CI checks.
-
-- **Status**: 🟢 Implemented
 
 ## Executive Summary
 
@@ -52,7 +49,7 @@ This RFC addresses critical security vulnerabilities in the geocoding service th
 
 ### Security Policy Violations
 
-5. **Nominatim Usage Policy Violation**
+1. **Nominatim Usage Policy Violation**
    - No rate limiting = risk of IP ban
    - Missing contact information in User-Agent (partially addressed)
    - Bulk requests without proper throttling
@@ -62,11 +59,13 @@ This RFC addresses critical security vulnerabilities in the geocoding service th
 ### 1. Add Rate Limiting (P0 - Critical)
 
 **Install Dependency**:
+
 ```bash
 yarn add @fastify/rate-limit
 ```
 
 **Implementation** (`packages/cli/src/app.ts`):
+
 ```typescript
 import rateLimit from '@fastify/rate-limit';
 
@@ -99,6 +98,7 @@ export function createApp(options: AppOptions): FastifyInstance {
 ```
 
 **Configuration** (Add to AppOptions):
+
 ```typescript
 type AppOptions = {
   geocoder: OpenStreetMapOptions;
@@ -113,6 +113,7 @@ type AppOptions = {
 ```
 
 **Benefits**:
+
 - Prevents DoS attacks
 - Complies with Nominatim usage policy
 - Protects service from abuse
@@ -121,6 +122,7 @@ type AppOptions = {
 ### 2. Add Input Validation (P0 - Critical)
 
 **Schema Update** (`packages/cli/src/app.ts:87-89`):
+
 ```typescript
 querystring: z.object({
   q: z
@@ -133,6 +135,7 @@ querystring: z.object({
 ```
 
 **Additional Validation** (in handler):
+
 ```typescript
 handler: async (req, res) => {
   const controller = new AbortController();
@@ -165,6 +168,7 @@ handler: async (req, res) => {
 ```
 
 **Benefits**:
+
 - Prevents memory exhaustion DoS
 - Blocks injection attacks
 - Validates input at API boundary
@@ -173,11 +177,13 @@ handler: async (req, res) => {
 ### 3. Add Security Headers (P0 - Critical)
 
 **Install Dependency**:
+
 ```bash
 yarn add @fastify/helmet
 ```
 
 **Implementation** (`packages/cli/src/app.ts`):
+
 ```typescript
 import helmet from '@fastify/helmet';
 
@@ -208,6 +214,7 @@ export function createApp(options: AppOptions): FastifyInstance {
 ```
 
 **Security Headers Added**:
+
 - `Content-Security-Policy`: Prevents XSS attacks
 - `X-Frame-Options`: Prevents clickjacking
 - `X-Content-Type-Options`: Prevents MIME sniffing
@@ -216,6 +223,7 @@ export function createApp(options: AppOptions): FastifyInstance {
 - `X-Download-Options`: Prevents file execution in IE
 
 **Benefits**:
+
 - Industry-standard security hardening
 - Protects against common web attacks
 - Minimal performance overhead
@@ -226,6 +234,7 @@ export function createApp(options: AppOptions): FastifyInstance {
 **Problem**: Runtime dependencies in wrong section
 
 **Fix** (`packages/core/package.json`):
+
 ```bash
 cd packages/core
 
@@ -236,6 +245,7 @@ yarn add undici type-fest
 ```
 
 **Updated package.json**:
+
 ```json
 {
   "dependencies": {
@@ -256,6 +266,7 @@ yarn add undici type-fest
 ```
 
 **Benefits**:
+
 - Correct dependency resolution in production
 - Prevents missing dependency errors
 - Proper semantic versioning
@@ -263,6 +274,7 @@ yarn add undici type-fest
 ### 5. Remove Unused Dependencies (P1 - High)
 
 **Root package.json cleanup**:
+
 ```bash
 # Remove unused dependencies
 yarn remove node-geocoder fetch-retry dayjs pretty-format
@@ -271,6 +283,7 @@ yarn remove node-geocoder fetch-retry dayjs pretty-format
 ```
 
 **Benefits**:
+
 - Reduced attack surface (fewer dependencies = fewer CVEs)
 - Smaller bundle size (~5MB reduction)
 - Faster install times
@@ -279,6 +292,7 @@ yarn remove node-geocoder fetch-retry dayjs pretty-format
 ### 6. Add Security Scanning (P1 - High)
 
 **Add to CI/CD Pipeline** (`.github/workflows/security.yml`):
+
 ```yaml
 name: Security Scan
 
@@ -322,6 +336,7 @@ jobs:
 ```
 
 **Benefits**:
+
 - Automated vulnerability detection
 - Early warning for security issues
 - Compliance documentation
@@ -358,30 +373,35 @@ jobs:
 ### Week 1: Critical Security Fixes
 
 **Day 1**: Add rate limiting
+
 - Install @fastify/rate-limit
 - Configure rate limiting middleware
 - Add tests for rate limit enforcement
 - Document configuration options
 
 **Day 2**: Add input validation
+
 - Update Zod schemas with length/regex constraints
 - Add injection prevention checks
 - Add validation error tests
 - Document validation rules
 
 **Day 3**: Add security headers
+
 - Install @fastify/helmet
 - Configure CSP for Swagger UI compatibility
 - Test all endpoints with security headers
 - Verify Swagger UI still functions
 
 **Day 4**: Fix dependency issues
+
 - Move undici and type-fest to dependencies
 - Remove unused dependencies
 - Verify clean install on fresh checkout
 - Update lock files
 
 **Day 5**: Testing and validation
+
 - Security penetration testing
 - DoS attack simulation
 - Input fuzzing tests
@@ -390,17 +410,20 @@ jobs:
 ### Week 2: Monitoring and Documentation
 
 **Day 1-2**: Add security monitoring
+
 - Set up security scanning CI/CD
 - Configure vulnerability alerts
 - Document security policies
 
 **Day 3-4**: Documentation
+
 - Update README with security considerations
 - Document rate limit configuration
 - Create security policy document
 - Add SECURITY.md for responsible disclosure
 
 **Day 5**: Deployment
+
 - Deploy to staging with monitoring
 - Validate security controls
 - Gradual production rollout
@@ -529,16 +552,19 @@ if (HELMET_ENABLED) {
 ## Alternatives Considered
 
 ### Alternative 1: Use Cloudflare Rate Limiting
+
 - **Pros**: Offload rate limiting to edge, DDoS protection
 - **Cons**: Requires Cloudflare account, costs money, less control
 - **Decision**: Application-level rate limiting is sufficient for now
 
 ### Alternative 2: Use API Gateway (AWS API Gateway, Kong)
+
 - **Pros**: Enterprise-grade security, centralized management
 - **Cons**: Infrastructure complexity, cost, overkill for current scale
 - **Decision**: Defer to future when scale requires it
 
 ### Alternative 3: Database-Level Rate Limiting
+
 - **Pros**: Persistent across restarts, shared across instances
 - **Cons**: Slower, adds database dependency
 - **Decision**: In-memory rate limiting sufficient for single-instance
@@ -546,6 +572,7 @@ if (HELMET_ENABLED) {
 ## Success Criteria
 
 ✅ **Must Have**:
+
 - Rate limiting functional (429 after exceeding limit)
 - Input validation blocks malicious inputs
 - Security headers present on all responses
@@ -553,6 +580,7 @@ if (HELMET_ENABLED) {
 - All security tests passing
 
 ✅ **Nice to Have**:
+
 - Security monitoring dashboard
 - Automated vulnerability scanning in CI/CD
 - Security policy documentation
@@ -561,14 +589,17 @@ if (HELMET_ENABLED) {
 ## Dependencies
 
 **New Dependencies**:
+
 - `@fastify/rate-limit` - Rate limiting middleware
 - `@fastify/helmet` - Security headers
 
 **Moved Dependencies**:
+
 - `undici` (devDep → dep)
 - `type-fest` (devDep → dep)
 
 **Removed Dependencies**:
+
 - `node-geocoder` (unused)
 - `fetch-retry` (unused)
 - `dayjs` (unused)
