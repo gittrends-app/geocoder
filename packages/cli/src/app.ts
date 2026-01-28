@@ -22,6 +22,10 @@ import {
 } from '@/core';
 import pJson from '../package.json' with { type: 'json' };
 
+// Module-level regex constants to avoid per-request compilation
+const NORMALIZE_COMMA = /[,]/g;
+const NORMALIZE_WHITESPACE = /\s+/g;
+
 type AppOptions = {
   geocoder: OpenStreetMapOptions;
   cache?: Partial<{ dirname: string; size: number }>;
@@ -95,7 +99,11 @@ export function createApp(options: AppOptions): FastifyInstance {
       handler: async (req, res) => {
         const controller = new AbortController();
         req.raw.on('close', () => controller.abort('Request aborted'));
-        const q = req.query.q.toLowerCase().trim().replace(/[,]/g, '').replace(/\s+/g, ' ');
+        const q = req.query.q
+          .toLowerCase()
+          .trim()
+          .replace(NORMALIZE_COMMA, '')
+          .replace(NORMALIZE_WHITESPACE, ' ');
         const address = await geocoder.search(q, { signal: controller.signal });
         if (address) res.send(address);
         else res.status(404).send({ message: 'Address not found' });

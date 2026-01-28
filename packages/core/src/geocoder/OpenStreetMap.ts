@@ -54,34 +54,38 @@ class BaseOpenStreetMap implements Geocoder {
    */
   async search(q: string): Promise<Address | null> {
     debug('searching for: %s', q);
-    const response = await fetch<NominatimSearchResult[]>(
-      `${this.options.osmServer || 'https://nominatim.openstreetmap.org'}/search?${new URLSearchParams(
-        [
-          ['q', q],
-          ['addressdetails', '1'],
-          ['accept-language', 'en-US'],
-          ['limit', '5'],
-          ['email', this.options.email || ''],
-          ['format', 'jsonv2']
-        ].filter(([, v]) => v !== '')
-      ).toString()}`,
-      {
-        headers: this.options.userAgent ? { 'User-Agent': this.options.userAgent } : undefined
-      }
-    ).json();
+    const params = new URLSearchParams({
+      q,
+      addressdetails: '1',
+      'accept-language': 'en-US',
+      limit: '5',
+      format: 'jsonv2'
+    });
+    if (this.options.email) params.set('email', this.options.email);
+
+    const url = `${this.options.osmServer || 'https://nominatim.openstreetmap.org'}/search?${params.toString()}`;
+
+    const response = await fetch<NominatimSearchResult[]>(url, {
+      headers: this.options.userAgent ? { 'User-Agent': this.options.userAgent } : undefined
+    }).json();
 
     if (response.length === 0) {
       debug('no results found for: %s', q);
       return null;
     }
 
-    const location = response
-      .filter((r) => r.importance && r.importance >= this.options.minConfidence)
-      .filter((r) => ['place', 'boundary'].includes(r.category!))
-      .reduce(
-        (prev, current) => (!prev || current.importance! > prev.importance! ? current : prev),
-        undefined as NominatimSearchResult | undefined
-      );
+    const location = response.reduce<NominatimSearchResult | undefined>((best, current) => {
+      // Skip entries without importance or below threshold
+      if (!current.importance || current.importance < this.options.minConfidence) return best;
+      // Skip entries without a valid category
+      if (!current.category || !['place', 'boundary'].includes(current.category)) return best;
+
+      // If we don't have a best yet, take the current
+      if (!best) return current;
+
+      // Keep the entry with the highest importance (non-null assertions because importance validated above)
+      return current.importance! > best.importance! ? current : best;
+    }, undefined);
 
     if (!location || !location.address) {
       debug(
