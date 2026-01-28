@@ -1,5 +1,4 @@
 import Debug from 'debug';
-import { HTTPError } from 'ky';
 import { Address, AddressSchema } from '../entities/Address.js';
 import fetch from '../helpers/fetch.js';
 import { Throttler } from './decorators/Throttler.js';
@@ -82,20 +81,6 @@ class BasePhoton implements Geocoder {
       debug('found address: %s', result.name);
       return result;
     } catch (error) {
-      // Handle specific HTTP errors
-      if (error instanceof HTTPError) {
-        if (error.response.status === 403) {
-          debug('photon rate limit exceeded for: %s', q);
-          // Treat 403 as no results so fallback can handle it
-          return null;
-        }
-        if (error.response.status === 429) {
-          debug('photon too many requests for: %s', q);
-          // Propagate to trigger upstream backoff
-          throw new Error('Photon rate limit exceeded', { cause: error });
-        }
-      }
-
       // Log and propagate unexpected errors
       debug('photon error for %s: %s', q, (error as Error).message);
       throw error;

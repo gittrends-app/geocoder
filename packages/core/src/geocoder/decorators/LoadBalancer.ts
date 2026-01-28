@@ -11,31 +11,15 @@ const debug = Debug('gittrends:geocoder:load-balancer');
  */
 export class LoadBalancer implements Geocoder {
   private readonly providers: Array<{ geocoder: Geocoder; queue: PQueue }>;
-  private readonly stats: { totalRequests: number; timeouts: number; queueFull: number };
-  private readonly maxQueueSize: number;
-  private readonly timeoutMs: number;
 
   /**
    * Create a new LoadBalancer
    * @param geocoders - Array of geocoder providers to distribute requests across
    */
-  constructor(geocoders: Geocoder[], options?: { maxQueueSize?: number; timeoutMs?: number }) {
+  constructor(geocoders: Geocoder[], options?: { timeoutMs?: number }) {
     if (!geocoders || geocoders.length === 0) {
       throw new Error('LoadBalancer requires at least one geocoder provider');
     }
-
-    this.maxQueueSize =
-      options?.maxQueueSize ??
-      (process.env.LOADBALANCER_MAX_QUEUE_SIZE
-        ? Number(process.env.LOADBALANCER_MAX_QUEUE_SIZE)
-        : 1000);
-    this.timeoutMs =
-      options?.timeoutMs ??
-      (process.env.LOADBALANCER_QUEUE_TIMEOUT_MS
-        ? Number(process.env.LOADBALANCER_QUEUE_TIMEOUT_MS)
-        : 30000);
-
-    this.stats = { totalRequests: 0, timeouts: 0, queueFull: 0 };
 
     this.providers = geocoders.map((geocoder, index) => {
       const wrapped = geocoders
@@ -44,25 +28,23 @@ export class LoadBalancer implements Geocoder {
 
       const queue = new PQueue({
         concurrency: Infinity,
-        timeout: this.timeoutMs,
+        timeout: options?.timeoutMs,
         autoStart: true
       });
 
       // Add lightweight event listeners for debugging
       // Note: PQueue emits 'active' and 'idle' events
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (queue as any).on?.('active', () => {
+      queue.on('active', () => {
         debug('Provider %d active: %d pending', index, queue.pending);
       });
 
-      (queue as any).on?.('idle', () => {
+      queue.on('idle', () => {
         debug('Provider %d idle', index);
       });
 
       // Handle queue errors (timeouts)
-      (queue as any).on?.('error', (err: Error) => {
+      queue.on('error', (err: Error) => {
         debug('Provider %d queue error: %s', index, err?.message);
-        if (err && err.message && err.message.includes('timeout')) this.stats.timeouts++;
       });
 
       return { geocoder: wrapped, queue };
@@ -79,7 +61,6 @@ export class LoadBalancer implements Geocoder {
    * @returns Promise resolving to Address or null
    */
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
-    this.stats.totalRequests++;
     // Select provider with lowest queue size
     const provider = this.providers.reduce((best, current) => {
       const bestLoad = best.queue.size + best.queue.pending;
@@ -96,34 +77,15 @@ export class LoadBalancer implements Geocoder {
       provider.queue.pending
     );
 
-    // Prevent unbounded growth: check queue size before enqueueing
-    const currentLoad = provider.queue.size + provider.queue.pending;
-    if (currentLoad >= this.maxQueueSize) {
-      this.stats.queueFull++;
-      const err = new Error(`Queue full: exceeded maximum size of ${this.maxQueueSize}`);
-      debug('Provider %d queue full for request %s', providerIndex, q);
-      throw err;
-    }
-
     // Add to provider's queue
-    try {
-      return await provider.queue.add(() => provider.geocoder.search(q, options), options);
-    } catch (err: unknown) {
-      // Propagate queue timeouts/errors while incrementing stats where appropriate
-      const e = err as Error;
-      if (e && e.message && e.message.includes('timeout')) this.stats.timeouts++;
-      throw err;
-    }
+    return provider.queue.add(() => provider.geocoder.search(q, options), options);
   }
 
   getStats() {
-    return {
-      ...this.stats,
-      providers: this.providers.map((p, i) => ({
-        index: i,
-        queueSize: p.queue.size,
-        pending: p.queue.pending
-      }))
-    };
+    return this.providers.map((p, i) => ({
+      index: `${p.geocoder.constructor.name} #${i}`,
+      queueSize: p.queue.size,
+      pending: p.queue.pending
+    }));
   }
 }
