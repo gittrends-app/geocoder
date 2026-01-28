@@ -71,7 +71,40 @@ program
         consola.info(`Server listening on http://${address.address}:${address.port}`);
       });
 
-      await app.listen({ host: options.host, port: options.port });
+      const server = await app.listen({ host: options.host, port: options.port });
+
+      // Graceful shutdown handler
+      const shutdown = async (signal: string) => {
+        consola.info(`Received ${signal}, starting graceful shutdown...`);
+        try {
+          // Stop accepting new connections
+          await app.close();
+          consola.info('HTTP server closed');
+
+          // Wait for in-flight requests to complete (max GRACEFUL_SHUTDOWN_TIMEOUT_MS)
+          const timeout = process.env.GRACEFUL_SHUTDOWN_TIMEOUT_MS
+            ? Number(process.env.GRACEFUL_SHUTDOWN_TIMEOUT_MS)
+            : 30000;
+          await new Promise((resolve) => setTimeout(resolve, timeout));
+
+          // Flush cache if using persistent storage
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const cache = (app as any).cache;
+          if (cache && typeof cache.flush === 'function') {
+            await cache.flush();
+            consola.info('Cache flushed');
+          }
+
+          consola.success('Graceful shutdown complete');
+          process.exit(0);
+        } catch (error) {
+          consola.error('Error during shutdown:', error);
+          process.exit(1);
+        }
+      };
+
+      process.on('SIGTERM', () => shutdown('SIGTERM'));
+      process.on('SIGINT', () => shutdown('SIGINT'));
     } catch (error) {
       consola.error(error);
       process.exit(1);

@@ -233,6 +233,45 @@ export function createApp(options: AppOptions): FastifyInstance {
         else res.status(404).send({ message: 'Address not found' });
       }
     });
+
+    // Health endpoints
+    app.get('/health', async (req, res) => {
+      const health: Record<string, unknown> = {
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        cache: {},
+        geocoder: {}
+      };
+
+      try {
+        // Quick check to see if geocoding works
+        const testResult = await geocoder.search('test', { signal: AbortSignal.timeout(1000) });
+        health.status = testResult ? 'healthy' : 'degraded';
+      } catch (error) {
+        health.status = 'degraded';
+        // Provide message for readiness checks
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (health as any).error = (error as Error).message;
+        res.status(503);
+      }
+
+      res.send(health);
+    });
+
+    app.get('/health/ready', async (req, res) => {
+      try {
+        await geocoder.search('test', { signal: AbortSignal.timeout(1000) });
+        res.status(200).send({ ready: true });
+      } catch (error) {
+        res.status(503).send({ ready: false, error: (error as Error).message });
+      }
+    });
+
+    app.get('/health/live', async (req, res) => {
+      res.status(200).send({ alive: true });
+    });
   });
 
   return app;
