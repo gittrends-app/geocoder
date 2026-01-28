@@ -1,10 +1,10 @@
 # RFC-001: Performance Optimizations
 
-- **Status**: 🔴 Draft
+- **Status**: ✅ Implemented
 - **Priority**: P0 (Critical performance issues) / P1 (Performance improvements)
 - **Author**: Code Analysis Agent
 - **Created**: 2026-01-27
-- **Updated**: 2026-01-27
+- **Updated**: 2026-01-28
 
 ## Executive Summary
 
@@ -351,6 +351,48 @@ Each change is independent and can be rolled back individually:
 - Array optimization: Low risk (pure logic change)
 - Cache writes: Low risk (only affects write path)
 - Deduplication: Medium risk (new state management)
+
+## Implementation Summary
+
+Status: Implemented on branch `feat/perf/cache-dedup-openstreetmap` (see PR URL below). The critical Phase 1 and Phase 2 changes described in this RFC have been implemented, unit tested, and validated locally.
+
+Files changed (high level):
+
+- packages/core/src/geocoder/decorators/Cache.ts — non-blocking cache writes; in-memory request deduplication (pending Map) and robust cleanup
+- packages/core/src/geocoder/OpenStreetMap.ts — single-pass reduce for result selection; URLSearchParams object usage
+- packages/cli/src/app.ts — module-level regex constants for request normalization
+- packages/core/src/geocoder/decorators/Cache.spec.ts — unit tests (concurrency, negative-cache, pending cleanup)
+- benchmark/run-array-bench.mjs — micro-benchmark runner for array filtering
+
+Recent commits (high level):
+
+- feat(core): non-blocking cache writes & request deduplication
+- fix(core): address TS undefined issue in OpenStreetMap reduce
+- perf(core): use URLSearchParams object and conditional email param
+- ⚡️ perf: add micro-benchmark runner for array filtering (commit: 9e0e08c)
+
+Branch: feat/perf/cache-dedup-openstreetmap
+PR (one-click creation link): https://github.com/gittrends-app/geocoder/pull/new/feat/perf/cache-dedup-openstreetmap
+
+## Validation
+
+- Unit tests: All unit tests passed locally. Vitest summary: 46 tests passed (packages/core suite).
+- Build: Local build succeeded (tsup + tsc declaration pass).
+- Micro-benchmark (synthetic, local; 100k items):
+  - original (3-pass) avg: 3.630 ms
+  - optimized (1-pass) avg: 1.634 ms
+  - Improvement: ~55%
+
+Notes: benchmark is a synthetic CPU-bound test that demonstrates the reduced iteration and allocation overhead of the single-pass approach. Real-world gains will vary based on response sizes and I/O.
+
+## Next steps / Follow-ups
+
+1. Open PR on upstream repo and request reviews (link above).
+2. Run load tests in staging (autocannon or k6) to validate real-world improvement and cache hit rates under realistic traffic.
+3. Add runtime observability: counters for cache-write failures and deduplication hits/misses.
+4. Evaluate distributed deduplication (Redis / coordination) if deploying multiple service instances behind a load balancer.
+5. Rollout progressively (10% → 50% → 100%) and monitor p95/p99 and error rates.
+
 
 ## Alternatives Considered
 
