@@ -15,7 +15,8 @@ describe('LoadBalancer', () => {
     type: 'city',
     country: 'United States',
     country_code: 'US',
-    city: 'New York'
+    city: 'New York',
+    provider: 'openstreetmap'
   };
 
   beforeEach(() => {

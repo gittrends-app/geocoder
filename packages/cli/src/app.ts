@@ -194,6 +194,7 @@ export function createApp(options: AppOptions): FastifyInstance {
         }),
         response: {
           200: AddressSchema,
+          400: z.object({ message: z.string().describe('Bad request') }),
           404: z.object({ message: z.string().describe('Address not found') })
         }
       },
