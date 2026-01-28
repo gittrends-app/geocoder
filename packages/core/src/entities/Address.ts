@@ -14,7 +14,7 @@ export const AddressSchema = z.preprocess(
     country_code: z.string().toUpperCase().optional().describe('The country code'),
     state: z.string().optional().describe('The state name'),
     city: z.string().optional().describe('The city name'),
-    provider: z.enum(['openstreetmap', 'photon']).describe('The geocoding provider')
+    provider: z.enum(['openstreetmap', 'photon', 'locationiq']).describe('The geocoding provider')
   })
 );
 

@@ -47,6 +47,11 @@ const geocoder = new Throttler(
   new OpenStreetMap(config),
   { concurrency: 1, intervalCap: 1000 }
 );
+
+// Throttler can be used with LocationIQ as well
+import { LocationIQ } from '../../LocationIQ.js';
+const li = new LocationIQ({ apiKey: process.env.LOCATIONIQ_KEY, concurrency: 1 });
+const throttled = new Throttler(li, { concurrency: 1, intervalCap: 1000 });
 ```
 
 ### Fallback

@@ -64,6 +64,31 @@ OpenStreetMap(options: { concurrency: number; minConfidence: number })
 - `options.concurrency`: The number of concurrent requests allowed.
 - `options.minConfidence`: The minimum confidence level required for a result.
 
+### LocationIQ
+
+The LocationIQ class provides geocoding functionality using the LocationIQ API. It requires an API key.
+
+```typescript
+LocationIQ(options: { apiKey: string; baseUrl?: string; concurrency?: number; minConfidence?: number })
+```
+
+- `options.apiKey`: Required. Your LocationIQ API key (can also be provided via env LOCATIONIQ_KEY).
+- `options.baseUrl`: Optional. Custom LocationIQ base URL (default: https://us1.locationiq.com/v1).
+- `options.concurrency`: Optional. Number of concurrent requests.
+- `options.minConfidence`: Optional. Minimum confidence to accept a result.
+
+Example:
+
+```typescript
+import { LocationIQ, Cache } from '../src/index.js';
+
+const locationiq = new LocationIQ({ apiKey: process.env.LOCATIONIQ_KEY!, concurrency: 1, minConfidence: 0.5 });
+const service = new Cache(locationiq, { dirname: '/tmp/addresses.json', size: 1000, ttl: 3600 });
+
+const res = await service.search('Seattle');
+console.log(res);
+```
+
 ### Cache
 
 The Cache class provides a caching mechanism for the geocoding service.

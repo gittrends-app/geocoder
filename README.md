@@ -6,6 +6,8 @@ Esse script é necessário uma vez que as localizações informadas são livres,
 
 Para isso usamos do [Nominatim](https://nominatim.openstreetmap.org/), uma search engine do OpenStreetMap, para resolver a localização provida em um local padronizado (país, estado, cidade, etc.).
 
+Também suportamos provedores comerciais como LocationIQ. O provedor LocationIQ exige uma chave de API — exporte a variável de ambiente LOCATIONIQ_KEY ou passe o apiKey ao construir o serviço.
+
 ## Instalação
 
 ```bash

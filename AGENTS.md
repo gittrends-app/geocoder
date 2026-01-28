@@ -14,7 +14,7 @@ This document provides comprehensive guidelines for AI coding agents working in 
 - **Testing:** Vitest 4.x with @vitest/coverage-v8
 - **Project Type:** Monorepo with workspaces (packages/core, packages/cli)
 
-**Purpose:** Geocoding service that resolves GitHub user location strings to standardized addresses using OpenStreetMap/Nominatim API.
+**Purpose:** Geocoding service that resolves GitHub user location strings to standardized addresses using OpenStreetMap/Nominatim and additional providers (e.g., LocationIQ).
 
 ## Project Structure
 
