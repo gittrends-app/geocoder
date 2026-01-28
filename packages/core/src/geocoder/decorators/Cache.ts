@@ -5,6 +5,7 @@ import Debug from 'debug';
 import Keyv, { KeyvOptions } from 'keyv';
 import QuickLRU from 'quick-lru';
 import { Address } from '../../entities/Address.js';
+import { CacheError, RequestAbortedError } from '../../errors/index.js';
 import { Geocoder } from '../Geocoder.js';
 import { Decorator } from './Decorator.js';
 
@@ -70,7 +71,7 @@ export class Cache extends Decorator {
     // Respect abort signal early
     if (options?.signal?.aborted) {
       debug('request aborted before cache lookup: %s', q);
-      throw new Error('Request aborted');
+      throw new RequestAbortedError(q);
     }
 
     // Check cache explicitly for undefined so that false (negative cache) is respected

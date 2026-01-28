@@ -1,6 +1,7 @@
 import Debug from 'debug';
 import PQueue from 'p-queue';
 import { Address } from '../../entities/Address.js';
+import { NoProvidersError } from '../../errors/index.js';
 import { Geocoder } from '../Geocoder.js';
 import { Fallback } from './Fallback.js';
 
@@ -18,7 +19,7 @@ export class LoadBalancer implements Geocoder {
    */
   constructor(geocoders: Geocoder[], options?: { timeoutMs?: number }) {
     if (!geocoders || geocoders.length === 0) {
-      throw new Error('LoadBalancer requires at least one geocoder provider');
+      throw new NoProvidersError();
     }
 
     this.providers = geocoders.map((geocoder, index) => {

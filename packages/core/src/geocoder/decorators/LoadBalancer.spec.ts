@@ -37,9 +37,7 @@ describe('LoadBalancer', () => {
 
   describe('constructor', () => {
     it('should throw error if no providers are given', () => {
-      expect(() => new LoadBalancer([])).toThrow(
-        'LoadBalancer requires at least one geocoder provider'
-      );
+      expect(() => new LoadBalancer([])).toThrow('No geocoder providers configured');
     });
 
     it('should initialize with providers', () => {
