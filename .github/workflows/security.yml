@@ -1,0 +1,26 @@
+name: Security Checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install
+        run: yarn install --frozen-lockfile
+      - name: Audit (npm audit)
+        run: yarn audit --level=high || true
+      - name: Run Snyk (optional)
+        if: env.SNYK_TOKEN != ''
+        uses: snyk/actions/node@master
+        with:
+          args: test
