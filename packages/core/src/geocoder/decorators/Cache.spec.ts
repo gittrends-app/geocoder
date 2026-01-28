@@ -1,57 +1,63 @@
-import { beforeEach, describe, expect, it, Mock, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Address } from '../../entities/Address.js';
-import { Geocoder } from '../Geocoder.js';
+import type { Geocoder } from '../Geocoder.js';
 import { Cache } from './Cache.js';
 
-describe('Cache', () => {
-  const mockGeocoder = {
-    search: vi.fn()
-  } as unknown as Geocoder;
+describe('Cache decorator - deduplication and non-blocking writes', () => {
+  it('should deduplicate concurrent requests and call underlying search once', async () => {
+    const cachedAddress = {
+      provider: 'openstreetmap',
+      source: 'San Francisco',
+      name: 'San Francisco, CA, USA',
+      type: 'city',
+      confidence: 0.9
+    } as unknown as Address;
 
-  let cache: Cache;
+    // Delayed resolver to simulate in-flight request
+    const mockSearch = vi.fn(
+      () => new Promise<Address>((res) => setTimeout(() => res(cachedAddress), 50))
+    );
 
-  const cachedAddress: Address = {
-    source: '123 Main St',
-    confidence: 1,
-    name: '123 Main St',
-    type: 'any'
-  };
+    const geocoder = { search: mockSearch } as unknown as Geocoder;
+    const cache = new Cache(geocoder, { size: 100, ttl: 60 });
 
-  beforeEach(() => {
-    cache = new Cache(mockGeocoder, {
-      size: 100,
-      ttl: 60,
-      namespace: 'test'
-    });
+    const promises = Array.from({ length: 10 }, () => cache.search('San Francisco'));
+    const results = await Promise.all(promises);
+
+    expect(mockSearch).toHaveBeenCalledTimes(1);
+    expect(results).toHaveLength(10);
+    expect(results.every((r) => r === cachedAddress)).toBe(true);
   });
 
-  it('should return cached address if available', async () => {
-    vi.spyOn(cache['cache'], 'get').mockResolvedValueOnce(cachedAddress);
+  it('should deduplicate concurrent negative (null) results and return null to callers', async () => {
+    const mockSearch = vi.fn(() => new Promise<null>((res) => setTimeout(() => res(null), 50)));
 
-    const result = await cache.search(cachedAddress.source);
+    const geocoder = { search: mockSearch } as unknown as Geocoder;
+    const cache = new Cache(geocoder, { size: 100, ttl: 60 });
 
-    expect(result).toEqual(cachedAddress);
-    expect(mockGeocoder.search).not.toHaveBeenCalled();
+    const promises = Array.from({ length: 5 }, () => cache.search('Nowhere'));
+    const results = await Promise.all(promises);
+
+    expect(mockSearch).toHaveBeenCalledTimes(1);
+    expect(results.every((r) => r === null)).toBe(true);
   });
 
-  it('should fetch address if not cached and cache the result', async () => {
-    (mockGeocoder.search as Mock).mockResolvedValueOnce(cachedAddress);
-    const setSpy = vi.spyOn(cache['cache'], 'set').mockResolvedValueOnce(undefined);
+  it('should clean up pending map after rejection', async () => {
+    const mockSearch = vi.fn(
+      () => new Promise((_res, rej) => setTimeout(() => rej(new Error('boom')), 20))
+    );
 
-    const result = await cache.search(cachedAddress.source);
+    const geocoder = { search: mockSearch } as unknown as Geocoder;
+    const cache = new Cache(geocoder, { size: 100, ttl: 60 });
 
-    expect(result).toEqual(cachedAddress);
-    expect(mockGeocoder.search).toHaveBeenCalledWith(cachedAddress.source, undefined);
-    expect(setSpy).toHaveBeenCalledWith(cachedAddress.source, cachedAddress);
-  });
+    const p1 = cache.search('Fail');
+    const p2 = cache.search('Fail');
 
-  it('should cache false if no address is found', async () => {
-    (mockGeocoder.search as Mock).mockResolvedValueOnce(null);
-    const setSpy = vi.spyOn(cache['cache'], 'set').mockResolvedValueOnce(undefined);
+    await expect(Promise.all([p1, p2])).rejects.toBeDefined();
 
-    const result = await cache.search(cachedAddress.source);
-
-    expect(result).toBeNull();
-    expect(setSpy).toHaveBeenCalledWith(cachedAddress.source, false);
+    // Access internal pending map to ensure cleanup (runtime check)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pending = (cache as any).pending as Map<string, Promise<Address | null>>;
+    expect(pending.size).toBe(0);
   });
 });

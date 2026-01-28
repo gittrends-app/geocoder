@@ -15,6 +15,8 @@ const debug = Debug('geocoder:cache');
  */
 export class Cache extends Decorator {
   private cache: CacheManager;
+  // Map to deduplicate concurrent requests for the same query
+  private pending = new Map<string, Promise<Address | null>>();
 
   /**
    * @param service - Geocoder service
@@ -65,16 +67,39 @@ export class Cache extends Decorator {
    * @returns Promise<Address | null> - The address found or null
    */
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
-    const cached = await this.cache.get<Address | false>(q);
-    if (cached) {
+    // Check cache explicitly for undefined so that false (negative cache) is respected
+    const cached = await this.cache.get<Address | false | undefined>(q);
+    if (cached !== undefined) {
       debug('cache hit for: %s', q);
-      return cached;
+      // cached may be `false` sentinel which represents "not found"
+      return (cached as Address) ?? null;
     }
 
-    return this.geocoder.search(q, options).then(async (address) => {
-      await this.cache.set(q, address || false);
-      debug('cached result for: %s', q);
-      return address;
-    });
+    // If a request for the same query is in flight, return the existing promise
+    const existing = this.pending.get(q);
+    if (existing) {
+      debug('deduplicating concurrent request for: %s', q);
+      return existing;
+    }
+
+    // Start a new request and store the promise in the pending map
+    const promise = this.geocoder
+      .search(q, options)
+      .then((address) => {
+        // Fire-and-forget cache write: do not block the response on cache set
+        this.cache
+          .set(q, address || false)
+          .catch((err: Error) =>
+            debug('cache write failed for %s: %s', q, err?.message ?? String(err))
+          );
+        return address;
+      })
+      .finally(() => {
+        // Ensure pending map is cleaned up regardless of outcome to avoid leaks
+        this.pending.delete(q);
+      });
+
+    this.pending.set(q, promise);
+    return promise;
   }
 }
