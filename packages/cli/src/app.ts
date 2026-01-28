@@ -86,18 +86,57 @@ export function createApp(options: AppOptions): FastifyInstance {
 
     const windowMs = parseWindow(timeWindow);
     const store = new Map<string, { count: number; reset: number }>();
+    // Prometheus metrics (lazy require to avoid adding global startup cost in tests)
+    let prom: typeof import('prom-client') | undefined;
+    try {
+      // Dynamic require to avoid top-level ESM import issues in older Node versions used by tests
+      // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+      // Use require via eval to keep TypeScript happy
+      // @ts-ignore - require may not be available in some runtimes
+      // eslint-disable-next-line no-eval
+      const req: NodeRequire = eval('require');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      prom = req('prom-client');
+      // Create counters if not already created
+      prom.register.getSingleMetric('rate_limit_hits') ??
+        new prom.Counter({
+          name: 'rate_limit_hits',
+          help: 'Number of requests evaluated by the rate limiter'
+        });
+      prom.register.getSingleMetric('rate_limit_blocks') ??
+        new prom.Counter({
+          name: 'rate_limit_blocks',
+          help: 'Number of requests blocked by rate limiter'
+        });
+      prom.register.getSingleMetric('validation_failures') ??
+        new prom.Counter({
+          name: 'validation_failures',
+          help: 'Number of input validation failures'
+        });
+    } catch (err: unknown) {
+      // If prom-client is not available, metrics will be no-ops
+      app.log.debug('prom-client not available, metrics disabled');
+      prom = undefined;
+    }
 
     app.addHook('onRequest', async (req, reply) => {
       try {
         const key = (req.headers['x-forwarded-for'] as string) || String(req.ip || 'unknown');
         const now = Date.now();
         const entry = store.get(key);
+        // increment hits
+        try {
+          prom?.register.getSingleMetric('rate_limit_hits')?.inc();
+        } catch {}
         if (!entry || now > entry.reset) {
           store.set(key, { count: 1, reset: now + windowMs });
         } else {
           entry.count += 1;
           store.set(key, entry);
           if (entry.count > max) {
+            try {
+              prom?.register.getSingleMetric('rate_limit_blocks')?.inc();
+            } catch {}
             reply.code(429).send({
               statusCode: 429,
               error: 'Too Many Requests',
@@ -180,6 +219,22 @@ export function createApp(options: AppOptions): FastifyInstance {
   app.after(async () => {
     app.get('/', async (req, res) => {
       res.redirect('/docs');
+    });
+
+    // Expose /metrics for Prometheus scraping if prom-client is available
+    app.get('/metrics', async (req, res) => {
+      try {
+        // eslint-disable-next-line no-eval
+        const reqFn: NodeRequire = eval('require');
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const prom = reqFn('prom-client');
+        const metrics = await prom.register.metrics();
+        res.header('content-type', prom.register.contentType || 'text/plain; version=0.0.4');
+        return res.send(metrics);
+      } catch (err: unknown) {
+        // prom-client not available or error - return empty
+        return res.code(204).send('');
+      }
     });
 
     app.withTypeProvider<ZodTypeProvider>().route({
