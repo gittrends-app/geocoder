@@ -75,24 +75,34 @@ class BaseOpenStreetMap implements Geocoder {
     }
 
     const location = response.reduce<NominatimSearchResult | undefined>((best, current) => {
-      // Skip entries without importance or below threshold
-      if (!current.importance || current.importance < this.options.minConfidence) return best;
-      // Skip entries without a valid category
-      if (!current.category || !['place', 'boundary'].includes(current.category)) return best;
+      // Explicit null/undefined checks
+      if (!current.importance || current.importance < this.options.minConfidence) {
+        return best;
+      }
 
-      // If we don't have a best yet, take the current
-      if (!best) return current;
+      // Check category exists before accessing
+      if (!current.category || !['place', 'boundary'].includes(current.category)) {
+        debug('filtered result: missing or invalid category');
+        return best;
+      }
 
-      // Keep the entry with the highest importance (non-null assertions because importance validated above)
-      return current.importance! > best.importance! ? current : best;
+      // Check address object exists
+      if (!current.address) {
+        debug('filtered result: missing address data');
+        return best;
+      }
+
+      return !best || (current.importance ?? 0) > (best.importance ?? 0) ? current : best;
     }, undefined);
 
-    if (!location || !location.address) {
-      debug(
-        'address filtered: confidence %.3f < %.3f',
-        location?.importance,
-        this.options.minConfidence
-      );
+    if (!location) {
+      debug('no valid results found for: %s', q);
+      return null;
+    }
+
+    // Additional check after reduce
+    if (!location.address) {
+      debug('address filtered: missing address data');
       return null;
     }
 

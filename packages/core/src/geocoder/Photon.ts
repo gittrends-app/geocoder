@@ -43,51 +43,63 @@ class BasePhoton implements Geocoder {
   async search(q: string): Promise<Address | null> {
     debug('searching for: %s', q);
 
-    const data = await fetch<PhotonSearchResult>(
-      `https://photon.komoot.io/api/?${new URLSearchParams([
-        ['q', q],
-        ['layer', 'district'],
-        ['layer', 'city'],
-        ['layer', 'county'],
-        ['layer', 'state'],
-        ['layer', 'country'],
-        ['osm_tag', 'place'],
-        ['osm_tag', 'boundary'],
-        ['lang', 'en']
-      ]).toString()}`
-    )
-      .then((res) => res?.json())
-      .catch((error) => {
-        if (error instanceof HTTPError && error.response.status === 403) {
-          debug('photon blocked the request for: %s', q);
-          return { features: [] } as PhotonSearchResult;
-        }
-        throw error;
+    try {
+      const data = await fetch<PhotonSearchResult>(
+        `https://photon.komoot.io/api/?${new URLSearchParams([
+          ['q', q],
+          ['layer', 'district'],
+          ['layer', 'city'],
+          ['layer', 'county'],
+          ['layer', 'state'],
+          ['layer', 'country'],
+          ['osm_tag', 'place'],
+          ['osm_tag', 'boundary'],
+          ['lang', 'en']
+        ]).toString()}`
+      ).then((res) => res?.json());
+
+      const [location] = data.features || [];
+      if (!location) {
+        debug('no results found for: %s', q);
+        return null;
+      }
+
+      const result = AddressSchema.parse({
+        provider: 'photon',
+        source: q,
+        name:
+          location.properties.name ||
+          [location.properties.country, location.properties.state].filter(Boolean).join(', ') ||
+          location.properties.country ||
+          '',
+        type: location.properties.osm_value,
+        confidence: 0,
+        country: location.properties.country,
+        country_code: location.properties.countrycode,
+        state: location.properties.state,
+        city: location.properties.type === 'city' ? location.properties.name : undefined
       });
+      debug('found address: %s', result.name);
+      return result;
+    } catch (error) {
+      // Handle specific HTTP errors
+      if (error instanceof HTTPError) {
+        if (error.response.status === 403) {
+          debug('photon rate limit exceeded for: %s', q);
+          // Treat 403 as no results so fallback can handle it
+          return null;
+        }
+        if (error.response.status === 429) {
+          debug('photon too many requests for: %s', q);
+          // Propagate to trigger upstream backoff
+          throw new Error('Photon rate limit exceeded', { cause: error });
+        }
+      }
 
-    const [location] = data.features || [];
-    if (!location) {
-      debug('no results found for: %s', q);
-      return null;
+      // Log and propagate unexpected errors
+      debug('photon error for %s: %s', q, (error as Error).message);
+      throw error;
     }
-
-    const result = AddressSchema.parse({
-      provider: 'photon',
-      source: q,
-      name:
-        location.properties.name ||
-        [location.properties.country, location.properties.state, location.properties.country]
-          .filter(Boolean)
-          .join(', '),
-      type: location.properties.osm_value,
-      confidence: 0,
-      country: location.properties.country,
-      country_code: location.properties.countrycode,
-      state: location.properties.state,
-      city: location.properties.type === 'city' ? location.properties.name : undefined
-    });
-    debug('found address: %s', result.name);
-    return result;
   }
 }
 
