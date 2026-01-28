@@ -9,7 +9,7 @@
 
 **Primary Language:** TypeScript
 **Runtime:** Node.js/Bun
-**Package Manager:** npm/pnpm/yarn
+**Package Manager:** npm/yarn/yarn
 **Build Tools:** TypeScript Compiler (tsc)
 **Testing:** Jest/Vitest (if configured)
 **Linting:** ESLint (if configured)
