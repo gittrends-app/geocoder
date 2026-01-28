@@ -14,12 +14,20 @@
     "gittrends-geocoder": "./packages/cli/dist/cli.js"
   },
   "type": "module",
-  "files": ["packages/core/dist", "packages/cli/dist", "package.json", "README.md"],
+  "files": [
+    "packages/core/dist",
+    "packages/cli/dist",
+    "package.json",
+    "README.md"
+  ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "packageManager": "yarn@1.22.22",
-  "workspaces": ["packages/core", "packages/cli"],
+  "workspaces": [
+    "packages/core",
+    "packages/cli"
+  ],
   "scripts": {
     "prepare": "husky || true",
     "build": "turbo build",
@@ -37,15 +45,11 @@
     "@keyv/compress-brotli": "^2.0.5",
     "cache-manager": "^7.2.7",
     "consola": "^3.4.2",
-
     "fastify": "^5.2.1",
     "fastify-type-provider-zod": "^6.1.0",
-
     "keyv": "^5.5.5",
     "keyv-file": "^5.3.3",
-
     "p-queue": "^9.0.1",
-
     "quick-lru": "^7.3.0",
     "zod": "^4.2.1"
   },
@@ -54,7 +58,7 @@
     "@commitlint/cli": "^20.2.0",
     "@commitlint/config-conventional": "^20.2.0",
     "@release-it/bumper": "^7.0.5",
-    "@tsconfig/node18": "^18.2.6",
+    "@tsconfig/node20": "^20.1.8",
     "@types/node": "^25.0.3",
     "@vitest/coverage-v8": "^4.0.16",
     "auto-changelog": "^2.5.0",
@@ -97,7 +101,9 @@
       "releaseName": "v${version}"
     },
     "hooks": {
-      "before:init": ["turbo lint test"],
+      "before:init": [
+        "turbo lint test"
+      ],
       "after:bump": [
         "yarn format",
         "yarn install",
@@ -107,7 +113,10 @@
     },
     "plugins": {
       "@release-it/bumper": {
-        "out": ["packages/core/package.json", "packages/cli/package.json"]
+        "out": [
+          "packages/core/package.json",
+          "packages/cli/package.json"
+        ]
       }
     }
   }

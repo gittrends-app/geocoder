@@ -7,7 +7,7 @@ This document provides comprehensive guidelines for AI coding agents working in 
 **Tech Stack:**
 
 - **Language:** TypeScript (ES Modules)
-- **Runtime:** Node.js >=18.0.0
+- **Runtime:** Node.js >=20.0.0
 - **Build System:** Turbo (monorepo orchestration), tsup (bundling), tsc (type definitions)
 - **Package Manager:** Yarn 1.22.22
 - **Formatter/Linter:** Biome 2.3.10
