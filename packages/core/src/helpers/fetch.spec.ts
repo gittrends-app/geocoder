@@ -15,11 +15,13 @@ import fetch from './fetch.js';
  */
 describe('fetch helper', () => {
   beforeEach(() => {
+    nock.abortPendingRequests();
     nock.cleanAll();
     nock.disableNetConnect();
   });
 
   afterEach(() => {
+    nock.abortPendingRequests();
     nock.cleanAll();
     nock.enableNetConnect();
   });
@@ -35,21 +37,23 @@ describe('fetch helper', () => {
     });
 
     it('should timeout when server takes longer than configured timeout', async () => {
-      nock('https://slow-api.example.com')
+      const scope = nock('https://slow-api.example.com')
         .get('/slow')
         .delay(2500) // Delay longer than 2-second timeout
-        .reply(200, { success: true })
-        .get('/slow')
-        .delay(0)
         .reply(200, { success: true });
 
       const startTime = Date.now();
 
       await expect(
-        fetch('https://slow-api.example.com/slow', { timeout: 2000 })
-      ).resolves.toBeDefined();
+        fetch('https://slow-api.example.com/slow', {
+          timeout: 2000,
+          // Disable retries in this test to assert timeout behavior deterministically.
+          retry: { limit: 0 }
+        } as unknown as never)
+      ).rejects.toThrow();
 
       expect(Date.now() - startTime).toBeGreaterThanOrEqual(2000);
+      expect(scope.isDone()).toBe(true);
     });
 
     it('should not timeout if request completes within configured timeout', async () => {
