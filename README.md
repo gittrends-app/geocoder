@@ -46,7 +46,7 @@ npx gittrends-app/geocoder --port 3000
 
 # Ou com Docker (a partir da raiz do repositório)
 docker build -f Dockerfile -t gittrends/geocoder .
-docker build github.com/gittrends-app/geocoder -t gittrends/geocoder
+docker build https://github.com/gittrends-app/geocoder.git -t gittrends/geocoder
 docker run --rm -p 3000:80 gittrends/geocoder
 ```
 
