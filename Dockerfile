@@ -1,5 +1,5 @@
 # Stage 1: Base
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 WORKDIR /app
 COPY package.json yarn.lock ./
 COPY packages/core/package.json ./packages/core/
@@ -16,7 +16,7 @@ RUN yarn install
 RUN yarn build
 
 # Stage 4: Release
-FROM node:20-alpine AS release
+FROM node:22-alpine AS release
 WORKDIR /app
 
 # Copy only the necessary files
@@ -38,5 +38,5 @@ EXPOSE 80
 VOLUME ["/app/.cache"]
 
 WORKDIR /app/packages/cli
-ENTRYPOINT [ "node", "dist/cli.cjs" ]
+ENTRYPOINT [ "node", "dist/cli.js" ]
 CMD []
