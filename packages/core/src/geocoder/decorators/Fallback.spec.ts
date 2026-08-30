@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Address } from '../../entities/Address.js';
+import { RequestAbortedError } from '../../errors/index.js';
 import { Geocoder } from '../Geocoder.js';
 import { Fallback } from './Fallback.js';
 
@@ -55,5 +56,44 @@ describe('Fallback', () => {
     expect(result).toBeNull();
     expect(primaryGeocoder.search).toHaveBeenCalledWith('query', undefined);
     expect(fallbackGeocoder.search).toHaveBeenCalledWith('query', undefined);
+  });
+
+  it('should not invoke fallback when the primary request is cancelled', async () => {
+    const primaryGeocoder = {
+      search: vi.fn().mockRejectedValue(new RequestAbortedError('query'))
+    } as unknown as Geocoder;
+    const fallbackGeocoder = { search: vi.fn() } as unknown as Geocoder;
+
+    const fallback = new Fallback(primaryGeocoder, fallbackGeocoder);
+    await expect(fallback.search('query')).rejects.toBeInstanceOf(RequestAbortedError);
+    expect(fallbackGeocoder.search).not.toHaveBeenCalled();
+  });
+
+  it('should not invoke fallback after the caller signal is aborted', async () => {
+    const controller = new AbortController();
+    const primaryGeocoder = {
+      search: vi.fn().mockImplementation(async () => {
+        controller.abort();
+        return null;
+      })
+    } as unknown as Geocoder;
+    const fallbackGeocoder = { search: vi.fn() } as unknown as Geocoder;
+
+    const fallback = new Fallback(primaryGeocoder, fallbackGeocoder);
+    await expect(fallback.search('query', { signal: controller.signal })).rejects.toBeInstanceOf(
+      RequestAbortedError
+    );
+    expect(fallbackGeocoder.search).not.toHaveBeenCalled();
+  });
+
+  it('should not invoke fallback a second time when the fallback rejects', async () => {
+    const primaryGeocoder = { search: vi.fn().mockResolvedValue(null) } as unknown as Geocoder;
+    const fallbackGeocoder = {
+      search: vi.fn().mockRejectedValue(new Error('fallback failed'))
+    } as unknown as Geocoder;
+
+    const fallback = new Fallback(primaryGeocoder, fallbackGeocoder);
+    await expect(fallback.search('query')).rejects.toThrow('fallback failed');
+    expect(fallbackGeocoder.search).toHaveBeenCalledTimes(1);
   });
 });

@@ -5,6 +5,7 @@
 .turbo
 package-lock.json
 yarn.lock
+.slim/deepwork/
 
 ### Node ###
 # Logs

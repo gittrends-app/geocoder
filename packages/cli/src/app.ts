@@ -1,5 +1,4 @@
 import path from 'node:path';
-import fastifyTraps from '@dnlup/fastify-traps';
 import helmet from '@fastify/helmet';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
@@ -17,22 +16,44 @@ import {
   Cache,
   Fallback,
   Geocoder,
+  GeocoderError,
+  MAX_QUERY_LENGTH,
+  normalizeQuery,
   OpenStreetMap,
   OpenStreetMapOptions,
-  Photon
+  Photon,
+  RequestAbortedError,
+  ValidationError
 } from '@/core';
 import pJson from '../package.json' with { type: 'json' };
+import {
+  DEFAULT_OSM_SERVER,
+  isDefaultNominatimServer,
+  MAX_RATE_LIMIT_ENTRIES,
+  normalizeOsmServerUrl,
+  parseCacheSize,
+  parseRateLimitMax,
+  parseRateLimitWindow,
+  validateCacheDirectory,
+  validateEmail,
+  validateUserAgent
+} from './helpers/config.js';
 
-// Module-level regex constants to avoid per-request compilation
-const NORMALIZE_COMMA = /[,]/g;
-const NORMALIZE_WHITESPACE = /\s+/g;
+const disallowedQueryControls = /[\u0000-\u001F\u007F-\u009F]/u;
+
+export function normalizeSearchQuery(query: unknown): string {
+  if (typeof query === 'string' && disallowedQueryControls.test(query)) {
+    throw new ValidationError('q', query, 'must not contain control characters');
+  }
+  return normalizeQuery(query);
+}
 
 type AppOptions = {
   // Accept either geocoder options to construct providers or a ready-made Geocoder (useful for tests)
   geocoder: OpenStreetMapOptions | Geocoder;
   cache?: Partial<{ dirname: string; size: number }>;
   debug?: boolean;
-  rateLimit?: { max?: number; timeWindow?: string; redis?: string };
+  rateLimit?: { max?: number; timeWindow?: string; redis?: string; maxKeys?: number };
   helmet?: { enabled?: boolean };
 };
 
@@ -42,10 +63,59 @@ type AppOptions = {
  * @returns {FastifyInstance} - The Fastify instance
  */
 export function createApp(options: AppOptions): FastifyInstance {
-  const app = fastify({ logger: options.debug });
+  const injectedGeocoder =
+    !!options.geocoder && typeof (options.geocoder as Geocoder).search === 'function';
+  const providerOptions = injectedGeocoder
+    ? undefined
+    : (() => {
+        const provider = options.geocoder as OpenStreetMapOptions;
+        return {
+          ...provider,
+          osmServer: normalizeOsmServerUrl(provider.osmServer ?? DEFAULT_OSM_SERVER),
+          email: validateEmail(provider.email),
+          userAgent: validateUserAgent(provider.userAgent)
+        };
+      })();
+  if (
+    providerOptions &&
+    isDefaultNominatimServer(providerOptions.osmServer) &&
+    (!providerOptions.email || !providerOptions.userAgent)
+  ) {
+    throw new ValidationError(
+      'OSM_SERVER',
+      providerOptions.osmServer,
+      'default Nominatim requires OSM_EMAIL and OSM_USER_AGENT'
+    );
+  }
+  const cacheOptions = options.cache
+    ? {
+        dirname: validateCacheDirectory(options.cache.dirname),
+        size: options.cache.size === undefined ? undefined : parseCacheSize(options.cache.size)
+      }
+    : undefined;
 
-  // Handle signals and timeouts
-  app.register(fastifyTraps);
+  const app = fastify({ logger: options.debug, trustProxy: false });
+
+  app.setErrorHandler((error, request, reply) => {
+    app.log.error({ err: error, url: request.url }, 'request failed');
+    if (reply.sent) return;
+    if (
+      error instanceof RequestAbortedError ||
+      (error instanceof Error && error.name === 'AbortError')
+    ) {
+      return reply.code(499).send({ message: 'Request aborted' });
+    }
+    if (error instanceof ValidationError || (error as { validation?: unknown }).validation) {
+      return reply.code(400).send({ message: 'Invalid request' });
+    }
+    if (error instanceof GeocoderError) {
+      return reply.code(502).send({ message: 'Geocoding service unavailable' });
+    }
+    if (request.routeOptions.url === '/search') {
+      return reply.code(502).send({ message: 'Geocoding service unavailable' });
+    }
+    return reply.code(500).send({ message: 'Internal server error' });
+  });
 
   // Register security headers (helmet) before other middleware
   // Default: helmet disabled unless explicitly enabled in options
@@ -72,34 +142,63 @@ export function createApp(options: AppOptions): FastifyInstance {
 
   // Register simple in-memory rate limiter BEFORE routes
   if (options.rateLimit) {
-    const max = options.rateLimit?.max ?? 100;
-    const timeWindow = options.rateLimit?.timeWindow ?? '1 minute';
-
-    const parseWindow = (tw: string) => {
-      const s = tw.toLowerCase().trim();
-      if (s.includes('minute')) return 60_000;
-      if (s.includes('second')) return 1_000;
-      if (s.includes('hour')) return 3_600_000;
-      const n = Number(s);
-      return Number.isFinite(n) ? n : 60_000;
+    if (options.rateLimit.redis !== undefined) {
+      throw new ValidationError(
+        'rateLimit.redis',
+        options.rateLimit.redis,
+        'Redis support is not configured'
+      );
+    }
+    const max = parseRateLimitMax(options.rateLimit.max ?? 100);
+    const windowMs = parseRateLimitWindow(options.rateLimit.timeWindow ?? '1 minute');
+    const maxKeys =
+      options.rateLimit.maxKeys !== undefined
+        ? parseRateLimitMax(options.rateLimit.maxKeys)
+        : MAX_RATE_LIMIT_ENTRIES;
+    const store = new Map<string, { count: number; reset: number; lastSeen: number }>();
+    let cleanupCursor = store.entries();
+    const cleanupExpired = () => {
+      const now = Date.now();
+      let checked = 0;
+      while (checked < 100) {
+        const next = cleanupCursor.next();
+        if (next.done) {
+          cleanupCursor = store.entries();
+          return;
+        }
+        checked += 1;
+        if (next.value[1].reset <= now) store.delete(next.value[0]);
+      }
     };
-
-    const windowMs = parseWindow(timeWindow);
-    const store = new Map<string, { count: number; reset: number }>();
+    const cleanupTimer = setInterval(cleanupExpired, Math.min(Math.max(windowMs, 1_000), 60_000));
+    cleanupTimer.unref();
+    app.addHook('onClose', async () => clearInterval(cleanupTimer));
 
     app.addHook('onRequest', async (req, reply) => {
       try {
-        const key = (req.headers['x-forwarded-for'] as string) || String(req.ip || 'unknown');
+        if (req.url.split('?')[0] === '/health/live') return;
+        const key = String(req.ip || 'unknown');
         const now = Date.now();
-        const entry = store.get(key);
+        let entry = store.get(key);
+        if (entry && entry.reset <= now) {
+          store.delete(key);
+          entry = undefined;
+        }
         // increment hits
-        if (!entry || now > entry.reset) {
-          store.set(key, { count: 1, reset: now + windowMs });
+        if (!entry) {
+          if (!entry && store.size >= maxKeys) {
+            const oldestKey = store.keys().next().value;
+            if (oldestKey !== undefined) store.delete(oldestKey);
+          }
+          store.set(key, { count: 1, reset: now + windowMs, lastSeen: now });
         } else {
           entry.count += 1;
+          entry.lastSeen = now;
+          // Map insertion order is the bounded LRU order.
+          store.delete(key);
           store.set(key, entry);
           if (entry.count > max) {
-            reply.code(429).send({
+            return reply.code(429).send({
               statusCode: 429,
               error: 'Too Many Requests',
               message: `Rate limit exceeded. Try again after ${Math.round((entry.reset - now) / 1000)} seconds.`,
@@ -158,22 +257,20 @@ export function createApp(options: AppOptions): FastifyInstance {
 
   let geocoder: Geocoder;
   // If a Geocoder instance is provided directly, use it (helps testing). Otherwise build from options.
-  if (
-    (options.geocoder as Geocoder) &&
-    typeof (options.geocoder as Geocoder).search === 'function'
-  ) {
+  if (injectedGeocoder) {
     geocoder = options.geocoder as Geocoder;
   } else {
-    const opts = options.geocoder as OpenStreetMapOptions;
+    const opts = providerOptions as OpenStreetMapOptions;
     geocoder = new Fallback(new OpenStreetMap(opts), new Photon(opts));
   }
+  const healthGeocoder = geocoder;
 
-  if (options.cache && options.cache.size) {
+  if (cacheOptions?.size) {
     geocoder = new Cache(geocoder, {
       namespace: 'geocoder-cache-cli',
-      size: options.cache.size,
-      secondary: options.cache.dirname
-        ? new KeyvFile({ filename: path.resolve(options.cache.dirname, 'geocoder-cache.json') })
+      size: cacheOptions.size,
+      secondary: cacheOptions.dirname
+        ? new KeyvFile({ filename: path.resolve(cacheOptions.dirname, 'geocoder-cache.json') })
         : undefined
     });
   }
@@ -189,9 +286,11 @@ export function createApp(options: AppOptions): FastifyInstance {
       schema: {
         tags: ['Geocoder'],
         summary: 'Geocode an address',
-        querystring: z.object({
-          q: z.string().min(1).max(500).describe('The address to geocode')
-        }),
+        querystring: z
+          .object({
+            q: z.string().min(1).max(MAX_QUERY_LENGTH).describe('The address to geocode')
+          })
+          .strict(),
         response: {
           200: AddressSchema,
           400: z.object({ message: z.string().describe('Bad request') }),
@@ -200,35 +299,25 @@ export function createApp(options: AppOptions): FastifyInstance {
       },
       handler: async (req, res) => {
         const controller = new AbortController();
-        req.raw.on('close', () => controller.abort('Request aborted'));
-        // Runtime normalization and additional validation beyond Zod
-        const rawQ = String(req.query.q ?? '');
-        const normalized = rawQ
-          .toLowerCase()
-          .trim()
-          .replace(NORMALIZE_COMMA, '')
-          .replace(NORMALIZE_WHITESPACE, ' ');
-
-        // Reject empty after normalization
-        if (!normalized || normalized.length === 0) {
-          return res
-            .status(400)
-            .send({ message: 'q must contain a non-empty address after normalization' });
+        req.raw.once('close', () => controller.abort('Request aborted'));
+        let normalized: string;
+        try {
+          normalized = normalizeSearchQuery(req.query.q);
+        } catch (error) {
+          if (error instanceof ValidationError) {
+            const message = error.constraint.includes('non-empty')
+              ? 'q must contain a non-empty address after normalization'
+              : error.constraint.includes('control')
+                ? 'q contains invalid control characters'
+                : error.constraint.includes('at most')
+                  ? `q must not exceed ${MAX_QUERY_LENGTH} characters`
+                  : 'q must be a string';
+            return res.status(400).send({ message });
+          }
+          throw error;
         }
 
-        // Explicitly reject URL-like inputs
-        if (normalized.includes('http://') || normalized.includes('https://')) {
-          return res.status(400).send({ message: 'q must not contain URLs' });
-        }
-
-        // Allowed characters: letters, numbers, whitespace, and common punctuation
-        const ALLOWED_RE = /^[\p{L}\p{N}\s,.'"\-()\/:&]+$/u;
-        if (!ALLOWED_RE.test(normalized)) {
-          return res.status(400).send({ message: 'q contains invalid characters' });
-        }
-
-        const q = normalized;
-        const address = await geocoder.search(q, { signal: controller.signal });
+        const address = await geocoder.search(normalized, { signal: controller.signal });
         if (address) res.send(address);
         else res.status(404).send({ message: 'Address not found' });
       }
@@ -239,21 +328,21 @@ export function createApp(options: AppOptions): FastifyInstance {
       const health: Record<string, unknown> = {
         status: 'healthy',
         timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        cache: {},
-        geocoder: {}
+        uptime: process.uptime()
       };
 
       try {
         // Quick check to see if geocoding works
-        const testResult = await geocoder.search('test', { signal: AbortSignal.timeout(1000) });
-        health.status = testResult ? 'healthy' : 'degraded';
-      } catch (error) {
+        const testResult = await healthGeocoder.search('test', {
+          signal: AbortSignal.timeout(1000)
+        });
+        if (testResult) health.status = 'healthy';
+        else {
+          health.status = 'degraded';
+          res.status(503);
+        }
+      } catch {
         health.status = 'degraded';
-        // Provide message for readiness checks
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (health as any).error = (error as Error).message;
         res.status(503);
       }
 
@@ -262,10 +351,11 @@ export function createApp(options: AppOptions): FastifyInstance {
 
     app.get('/health/ready', async (req, res) => {
       try {
-        await geocoder.search('test', { signal: AbortSignal.timeout(1000) });
-        res.status(200).send({ ready: true });
-      } catch (error) {
-        res.status(503).send({ ready: false, error: (error as Error).message });
+        const result = await healthGeocoder.search('test', { signal: AbortSignal.timeout(1000) });
+        if (result) res.status(200).send({ ready: true });
+        else res.status(503).send({ ready: false });
+      } catch {
+        res.status(503).send({ ready: false });
       }
     });
 

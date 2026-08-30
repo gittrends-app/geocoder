@@ -1,7 +1,8 @@
 import Debug from 'debug';
 import type { MergeExclusive } from 'type-fest';
-import { Address, AddressSchema } from '../entities/Address.js';
+import { Address, AddressSchema, ConfidenceSchema } from '../entities/Address.js';
 import fetch from '../helpers/fetch.js';
+import { normalizeQueryWithOriginal } from '../helpers/query.js';
 import { Throttler } from './decorators/Throttler.js';
 import { Geocoder } from './Geocoder.js';
 
@@ -52,10 +53,11 @@ class BaseOpenStreetMap implements Geocoder {
    * @param q - Search query
    * @returns Promise<Address | null> - The address found or null
    */
-  async search(q: string): Promise<Address | null> {
-    debug('searching for: %s', q);
+  async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
+    const { normalized } = normalizeQueryWithOriginal(q);
+    debug('searching for: %s', normalized);
     const params = new URLSearchParams({
-      q,
+      q: normalized,
       addressdetails: '1',
       'accept-language': 'en-US',
       limit: '5',
@@ -66,17 +68,19 @@ class BaseOpenStreetMap implements Geocoder {
     const url = `${this.options.osmServer || 'https://nominatim.openstreetmap.org'}/search?${params.toString()}`;
 
     const response = await fetch<NominatimSearchResult[]>(url, {
-      headers: this.options.userAgent ? { 'User-Agent': this.options.userAgent } : undefined
+      headers: this.options.userAgent ? { 'User-Agent': this.options.userAgent } : undefined,
+      signal: options?.signal
     }).json();
 
-    if (response.length === 0) {
-      debug('no results found for: %s', q);
+    if (!Array.isArray(response) || response.length === 0) {
+      debug('no results found for: %s', normalized);
       return null;
     }
 
     const location = response.reduce<NominatimSearchResult | undefined>((best, current) => {
-      // Explicit null/undefined checks
-      if (!current.importance || current.importance < this.options.minConfidence) {
+      if (!current || typeof current !== 'object') return best;
+      const confidence = ConfidenceSchema.safeParse(current.importance);
+      if (!confidence.success || confidence.data < this.options.minConfidence) {
         return best;
       }
 
@@ -87,7 +91,7 @@ class BaseOpenStreetMap implements Geocoder {
       }
 
       // Check address object exists
-      if (!current.address) {
+      if (!current.address || typeof current.address !== 'object') {
         debug('filtered result: missing address data');
         return best;
       }
@@ -96,7 +100,7 @@ class BaseOpenStreetMap implements Geocoder {
     }, undefined);
 
     if (!location) {
-      debug('no valid results found for: %s', q);
+      debug('no valid results found for: %s', normalized);
       return null;
     }
 
@@ -106,21 +110,26 @@ class BaseOpenStreetMap implements Geocoder {
       return null;
     }
 
-    const result = AddressSchema.parse({
+    const parsed = AddressSchema.safeParse({
       provider: 'openstreetmap',
-      source: q,
-      name: [location.address.country, location.address.state, location.address.city]
-        .filter(Boolean)
-        .join(', '),
-      type: location.type,
+      source: normalized,
+      name:
+        [location.address.country, location.address.state, location.address.city]
+          .filter(Boolean)
+          .join(', ') || location.display_name,
+      type: location.type ?? location.category,
       confidence: location.importance,
       country: location.address.country,
       country_code: location.address.country_code,
       state: location.address.state,
       city: location.address.city
     });
-    debug('found address: %s (confidence: %.3f)', result.name, result.confidence);
-    return result;
+    if (!parsed.success) {
+      debug('discarding malformed OpenStreetMap result for: %s', normalized);
+      return null;
+    }
+    debug('found address: %s (confidence: %.3f)', parsed.data.name, parsed.data.confidence);
+    return parsed.data;
   }
 }
 

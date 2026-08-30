@@ -1,5 +1,5 @@
 import Debug from 'debug';
-import fetch from 'ky';
+import fetch, { type Options, type RetryOptions, TimeoutError } from 'ky';
 import { Agent } from 'undici';
 
 const debug = Debug('geocoder:fetch');
@@ -12,7 +12,16 @@ const dispatcher = new Agent({
   keepAliveMaxTimeout: 600000
 });
 
-export type FetchOptions = RequestInit & { timeout?: number };
+export type FetchOptions = Options & { dispatcher?: Agent };
+
+function isCancellation(error: Error, signal?: AbortSignal): boolean {
+  return (
+    signal?.aborted === true ||
+    error.name === 'AbortError' ||
+    error instanceof TimeoutError ||
+    error.name === 'TimeoutError'
+  );
+}
 
 /**
  *  Fetch with retry
@@ -24,17 +33,51 @@ export type FetchOptions = RequestInit & { timeout?: number };
 export default function <T>(url: string | URL, options?: FetchOptions) {
   debug('fetching: %s', url);
 
+  const {
+    headers: providedHeaders,
+    retry: providedRetry,
+    throwHttpErrors: providedThrowHttpErrors,
+    timeout: providedTimeout,
+    dispatcher: providedDispatcher,
+    ...requestOptions
+  } = options ?? {};
+
+  const headers = new Headers(providedHeaders);
+  if (!headers.has('User-Agent')) headers.set('User-Agent', 'gittrends-geocoder');
+
+  const customShouldRetry =
+    typeof providedRetry === 'object' && providedRetry ? providedRetry.shouldRetry : undefined;
+  const retry: RetryOptions = {
+    limit: 3,
+    delay: (attemptCount) => Math.pow(2, attemptCount) * 1000,
+    // Retain the helper's historical 403/418 behavior while leaving the
+    // actual status and Retry-After decisions to Ky.
+    statusCodes: [403, 418, 429, 500, 502, 503, 504],
+    ...(typeof providedRetry === 'number' ? { limit: providedRetry } : providedRetry),
+    shouldRetry: async (state) => {
+      if (isCancellation(state.error, requestOptions.signal ?? undefined)) return false;
+
+      // A caller-provided policy remains supported, but cannot make an
+      // aborted or timed-out request retry.
+      if (customShouldRetry) {
+        return customShouldRetry(state);
+      }
+
+      // Undefined delegates status, method, network-error, and Retry-After
+      // handling to Ky's normal retry machinery.
+      return undefined;
+    }
+  };
+
   return fetch<T>(url, {
-    retry: {
-      limit: 3,
-      delay: (attemptCount) => Math.pow(2, attemptCount) * 1000,
-      shouldRetry: ({ error }) => (error ? true : undefined)
-    },
-    timeout: options?.timeout ?? 10000,
-    throwHttpErrors: (status) => /^(403|418|429|5\d{2})$/.test(String(status)),
-    headers: { 'User-Agent': 'gittrends-geocoder', ...options?.headers },
-    // @ts-expect-error - undici dispatcher is valid but not in ky types
-    dispatcher,
-    ...options
+    ...requestOptions,
+    retry,
+    timeout: providedTimeout ?? 10000,
+    throwHttpErrors:
+      providedThrowHttpErrors ?? ((status) => /^(403|418|429|5\d{2})$/.test(String(status))),
+    headers,
+    // Ky passes this vendor-specific fetch option through to undici.
+    // @ts-expect-error - dispatcher is supported by undici, but not by Ky's Options type
+    dispatcher: providedDispatcher ?? dispatcher
   });
 }

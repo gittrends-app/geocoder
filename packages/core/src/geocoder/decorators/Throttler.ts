@@ -2,6 +2,7 @@ import Debug from 'debug';
 import PQueue from 'p-queue';
 import { Address } from '../../entities/Address.js';
 import { QueueFullError, RequestAbortedError } from '../../errors/index.js';
+import { normalizeQueryWithOriginal } from '../../helpers/query.js';
 import { Geocoder } from '../Geocoder.js';
 import { Decorator } from './Decorator.js';
 
@@ -33,25 +34,26 @@ export class Throttler extends Decorator {
    * @returns Promise<Address | null> - The address found or null
    */
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
+    const { normalized } = normalizeQueryWithOriginal(q);
     debug(
       'queueing search for: %s (queue size: %d, pending: %d)',
-      q,
+      normalized,
       this.queue.size,
       this.queue.pending
     );
     // Respect abort before queueing
     if (options?.signal?.aborted) {
-      debug('request aborted before queueing: %s', q);
-      throw new RequestAbortedError(q);
+      debug('request aborted before queueing: %s', normalized);
+      throw new RequestAbortedError(normalized);
     }
 
     return this.queue.add(() => {
       // Check again when dequeued
       if (options?.signal?.aborted) {
-        debug('request aborted after dequeue: %s', q);
-        throw new RequestAbortedError(q);
+        debug('request aborted after dequeue: %s', normalized);
+        throw new RequestAbortedError(normalized);
       }
-      return this.geocoder.search(q, options);
+      return this.geocoder.search(normalized, options);
     }, options) as Promise<Address | null>;
   }
 }

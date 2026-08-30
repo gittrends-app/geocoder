@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Address } from '../../entities/Address.js';
+import { RequestAbortedError } from '../../errors/index.js';
 import type { Geocoder } from '../Geocoder.js';
 import { Cache } from './Cache.js';
 
@@ -40,6 +41,133 @@ describe('Cache decorator - deduplication and non-blocking writes', () => {
 
     expect(mockSearch).toHaveBeenCalledTimes(1);
     expect(results.every((r) => r === null)).toBe(true);
+  });
+
+  it('should return null for a later negative cache hit', async () => {
+    const mockSearch = vi.fn().mockResolvedValue(null);
+    const geocoder = { search: mockSearch } as unknown as Geocoder;
+    const cache = new Cache(geocoder, { size: 100, ttl: 60 });
+
+    expect(await cache.search('  No   Such   Place ')).toBeNull();
+    // Cache writes are intentionally non-blocking.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await cache.search('No Such Place')).toBeNull();
+    expect(mockSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it('should use the canonical query as the provider source', async () => {
+    const mockSearch = vi.fn(async (query: string) => ({ source: query }) as unknown as Address);
+    const geocoder = { search: mockSearch } as unknown as Geocoder;
+    const cache = new Cache(geocoder, { size: 100, ttl: 60 });
+
+    const result = await cache.search('  Same\tQuery  ');
+
+    expect(result?.source).toBe('Same Query');
+    expect(mockSearch).toHaveBeenCalledWith('Same Query', expect.anything());
+  });
+
+  it('should abort while waiting for cache lookup and clean up its listener', async () => {
+    let rejectCacheLookup: (error: Error) => void = () => undefined;
+    const cacheLookup = new Promise<undefined>((_, reject) => {
+      rejectCacheLookup = reject;
+    });
+    const geocoder = { search: vi.fn() } as unknown as Geocoder;
+    const cache = new Cache(geocoder, { size: 100, ttl: 60 });
+    const store = (cache as any).cache as { get: () => Promise<undefined> };
+    store.get = vi.fn(() => cacheLookup);
+    const controller = new AbortController();
+    const addListener = vi.spyOn(controller.signal, 'addEventListener');
+    const removeListener = vi.spyOn(controller.signal, 'removeEventListener');
+
+    const request = cache.search('slow cache', { signal: controller.signal });
+    controller.abort();
+    await expect(request).rejects.toBeInstanceOf(RequestAbortedError);
+    rejectCacheLookup(new Error('late cache failure'));
+
+    expect(addListener).toHaveBeenCalledOnce();
+    expect(removeListener).toHaveBeenCalledOnce();
+  });
+
+  it('should abort one caller without cancelling a shared request for another', async () => {
+    let requestStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      requestStarted = resolve;
+    });
+    let resolveProvider!: (address: Address) => void;
+    let underlyingAborted = false;
+    const mockSearch = vi.fn((_query: string, options?: { signal?: AbortSignal }) => {
+      requestStarted();
+      return new Promise<Address>((resolve, reject) => {
+        resolveProvider = resolve;
+        options?.signal?.addEventListener(
+          'abort',
+          () => {
+            underlyingAborted = true;
+            reject(new RequestAbortedError(_query));
+          },
+          { once: true }
+        );
+      });
+    });
+    const geocoder = { search: mockSearch } as unknown as Geocoder;
+    const cache = new Cache(geocoder, { size: 100, ttl: 60 });
+    const firstController = new AbortController();
+
+    const first = cache.search('same query', { signal: firstController.signal });
+    await started;
+    const second = cache.search(' same   query ');
+    await vi.waitFor(() => {
+      const pending = (cache as any).pending.get('same query');
+      expect(pending?.callers).toBe(2);
+    });
+    firstController.abort();
+
+    await expect(first).rejects.toBeInstanceOf(RequestAbortedError);
+    expect(underlyingAborted).toBe(false);
+    resolveProvider({ provider: 'openstreetmap' } as unknown as Address);
+    await expect(second).resolves.toEqual({ provider: 'openstreetmap' });
+    expect(mockSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels the shared provider request when all callers abort', async () => {
+    let requestStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      requestStarted = resolve;
+    });
+    let underlyingAborted = false;
+    const mockSearch = vi.fn((_query: string, options?: { signal?: AbortSignal }) => {
+      requestStarted();
+      return new Promise<Address>((_, reject) => {
+        options?.signal?.addEventListener(
+          'abort',
+          () => {
+            underlyingAborted = true;
+            reject(new RequestAbortedError(_query));
+          },
+          { once: true }
+        );
+      });
+    });
+    const geocoder = { search: mockSearch } as unknown as Geocoder;
+    const cache = new Cache(geocoder, { size: 100, ttl: 60 });
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+
+    const first = cache.search('all abort', { signal: firstController.signal });
+    await started;
+    const second = cache.search(' all   abort ', { signal: secondController.signal });
+    await vi.waitFor(() => {
+      const pending = (cache as any).pending.get('all abort');
+      expect(pending?.callers).toBe(2);
+    });
+
+    firstController.abort();
+    secondController.abort();
+
+    await expect(first).rejects.toBeInstanceOf(RequestAbortedError);
+    await expect(second).rejects.toBeInstanceOf(RequestAbortedError);
+    expect(underlyingAborted).toBe(true);
+    expect(mockSearch).toHaveBeenCalledTimes(1);
   });
 
   it('should clean up pending map after rejection', async () => {

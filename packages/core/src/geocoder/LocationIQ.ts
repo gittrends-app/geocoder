@@ -1,6 +1,7 @@
 import Debug from 'debug';
-import { type Address, AddressSchema } from '../entities/Address.js';
+import { type Address, AddressSchema, ConfidenceSchema } from '../entities/Address.js';
 import fetch from '../helpers/fetch.js';
+import { normalizeQueryWithOriginal } from '../helpers/query.js';
 import { Throttler } from './decorators/Throttler.js';
 import { Geocoder } from './Geocoder.js';
 
@@ -30,12 +31,13 @@ class BaseLocationIQ implements Geocoder {
   }
 
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
-    debug('searching for: %s', q);
+    const { normalized } = normalizeQueryWithOriginal(q);
+    debug('searching for: %s', normalized);
 
     const base = this.options.baseUrl ?? 'https://us1.locationiq.com/v1';
     const params = new URLSearchParams({
       key: this.options.apiKey,
-      q,
+      q: normalized,
       format: 'json',
       addressdetails: '1',
       limit: '5'
@@ -49,24 +51,29 @@ class BaseLocationIQ implements Geocoder {
       typeof (raw as any)?.json === 'function' ? await (raw as any).json() : (raw as any);
 
     if (!Array.isArray(response) || response.length === 0) {
-      debug('no results from locationiq for: %s', q);
+      debug('no results from locationiq for: %s', normalized);
       return null;
     }
 
     const candidate = response[0];
-    if (!candidate) return null;
+    if (!candidate || typeof candidate !== 'object') return null;
 
-    const addr = candidate.address ?? {};
-    const confidence = Number(candidate.importance ?? candidate.rank_search ?? 0);
+    const addr =
+      candidate.address && typeof candidate.address === 'object' ? candidate.address : {};
+    const confidenceResult = ConfidenceSchema.safeParse(
+      candidate.importance ?? candidate.rank_search ?? 0
+    );
+    if (!confidenceResult.success) return null;
+    const confidence = confidenceResult.data;
 
     if (this.options.minConfidence && confidence < this.options.minConfidence) {
       debug('confidence below threshold: %s < %s', confidence, this.options.minConfidence);
       return null;
     }
 
-    const result = AddressSchema.parse({
+    const parsed = AddressSchema.safeParse({
       provider: 'locationiq',
-      source: q,
+      source: normalized,
       name: [addr.country, addr.state ?? addr.county, addr.city ?? addr.town ?? addr.village]
         .filter(Boolean)
         .join(', '),
@@ -78,8 +85,12 @@ class BaseLocationIQ implements Geocoder {
       city: addr.city ?? addr.town ?? addr.village
     });
 
-    debug('found address: %s (confidence: %s)', result.name, result.confidence);
-    return result;
+    if (!parsed.success) {
+      debug('discarding malformed LocationIQ result for: %s', normalized);
+      return null;
+    }
+    debug('found address: %s (confidence: %s)', parsed.data.name, parsed.data.confidence);
+    return parsed.data;
   }
 }
 

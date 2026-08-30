@@ -1,6 +1,7 @@
 import Debug from 'debug';
 import { Address, AddressSchema } from '../entities/Address.js';
 import fetch from '../helpers/fetch.js';
+import { normalizeQueryWithOriginal } from '../helpers/query.js';
 import { Throttler } from './decorators/Throttler.js';
 import { Geocoder } from './Geocoder.js';
 
@@ -39,13 +40,14 @@ class BasePhoton implements Geocoder {
    * @param q - Search query
    * @returns Promise<Address | null> - The address found or null
    */
-  async search(q: string): Promise<Address | null> {
-    debug('searching for: %s', q);
+  async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
+    const { normalized } = normalizeQueryWithOriginal(q);
+    debug('searching for: %s', normalized);
 
     try {
       const data = await fetch<PhotonSearchResult>(
         `https://photon.komoot.io/api/?${new URLSearchParams([
-          ['q', q],
+          ['q', normalized],
           ['layer', 'district'],
           ['layer', 'city'],
           ['layer', 'county'],
@@ -54,18 +56,19 @@ class BasePhoton implements Geocoder {
           ['osm_tag', 'place'],
           ['osm_tag', 'boundary'],
           ['lang', 'en']
-        ]).toString()}`
+        ]).toString()}`,
+        { signal: options?.signal }
       ).then((res) => res?.json());
 
-      const [location] = data.features || [];
-      if (!location) {
-        debug('no results found for: %s', q);
+      const [location] = Array.isArray(data?.features) ? data.features : [];
+      if (!location || !location.properties || typeof location.properties !== 'object') {
+        debug('no results found for: %s', normalized);
         return null;
       }
 
-      const result = AddressSchema.parse({
+      const parsed = AddressSchema.safeParse({
         provider: 'photon',
-        source: q,
+        source: normalized,
         name:
           location.properties.name ||
           [location.properties.country, location.properties.state].filter(Boolean).join(', ') ||
@@ -78,11 +81,19 @@ class BasePhoton implements Geocoder {
         state: location.properties.state,
         city: location.properties.type === 'city' ? location.properties.name : undefined
       });
-      debug('found address: %s', result.name);
-      return result;
+      if (!parsed.success) {
+        debug('discarding malformed Photon result for: %s', normalized);
+        return null;
+      }
+      debug('found address: %s', parsed.data.name);
+      return parsed.data;
     } catch (error) {
       // Log and propagate unexpected errors
-      debug('photon error for %s: %s', q, (error as Error).message);
+      debug(
+        'photon error for %s: %s',
+        normalized,
+        error instanceof Error ? error.message : String(error)
+      );
       throw error;
     }
   }

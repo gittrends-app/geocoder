@@ -56,6 +56,54 @@ describe('fetch helper', () => {
       expect(scope.isDone()).toBe(true);
     });
 
+    it('should not retry an aborted request', async () => {
+      let attempts = 0;
+      let requestStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        requestStarted = resolve;
+      });
+      const scope = nock('https://abort-api.example.com')
+        .get('/abort')
+        .delayBody(200)
+        .reply(() => {
+          attempts += 1;
+          requestStarted();
+          return [200, { success: true }];
+        });
+      const controller = new AbortController();
+      const request = fetch('https://abort-api.example.com/abort', {
+        signal: controller.signal,
+        timeout: 1000
+      });
+
+      await started;
+      controller.abort();
+      await expect(request).rejects.toThrow();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(attempts).toBe(1);
+      expect(scope.isDone()).toBe(true);
+    });
+
+    it('should not retry a timeout even when retries are available', async () => {
+      let attempts = 0;
+      const scope = nock('https://timeout-api.example.com')
+        .get('/timeout')
+        .delay(200)
+        .reply(() => {
+          attempts += 1;
+          return [200, { success: true }];
+        });
+
+      await expect(
+        fetch('https://timeout-api.example.com/timeout', { timeout: 25 })
+      ).rejects.toThrow();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(attempts).toBe(1);
+      expect(scope.isDone()).toBe(true);
+    });
+
     it('should not timeout if request completes within configured timeout', async () => {
       const scope = nock('https://api.example.com')
         .get('/data')
@@ -168,6 +216,23 @@ describe('fetch helper', () => {
       const response = await fetch('https://api.example.com/data', { timeout: 2000 });
 
       expect(response.status).toBe(200);
+      expect(scope.isDone()).toBe(true);
+    });
+
+    it('should honor Retry-After through Ky retry handling', async () => {
+      const scope = nock('https://api.example.com')
+        .get('/data')
+        .reply(429, 'Too Many Requests', { 'Retry-After': '0.05' })
+        .get('/data')
+        .reply(200, { success: true });
+
+      const started = Date.now();
+      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
+      const elapsed = Date.now() - started;
+
+      expect(response.status).toBe(200);
+      expect(elapsed).toBeGreaterThanOrEqual(30);
+      expect(elapsed).toBeLessThan(1000);
       expect(scope.isDone()).toBe(true);
     });
 
