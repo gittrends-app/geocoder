@@ -320,6 +320,22 @@ export function createApp(options: AppOptions): FastifyInstance {
         }
 
         const address = await geocoder.search(normalized, { signal: controller.signal });
+
+        // Log structured geocoding result
+        app.log.info(
+          {
+            query: normalized,
+            result: address ? 'resolved' : 'not_found',
+            resolved: !!address,
+            ...(address && {
+              provider: address.provider,
+              name: address.name,
+              confidence: address.confidence
+            })
+          },
+          'geocoding completed'
+        );
+
         if (address) res.send(address);
         else res.status(404).send({ message: 'Address not found' });
       }

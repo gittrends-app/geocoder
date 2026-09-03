@@ -132,4 +132,67 @@ describe('HTTP application boundaries', () => {
     expect(readiness.json()).toEqual({ ready: false });
     await app.close();
   });
+
+  it('logs structured info when geocoding succeeds', async () => {
+    const searchResult = address('São Paulo, Brazil');
+    const search = vi.fn(async () => searchResult);
+    const app = createApp({
+      geocoder: { search },
+      logLevel: 'silent',
+      helmet: { enabled: false }
+    });
+
+    const logInfoSpy = vi.spyOn(app.log, 'info');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/search?q=S%C3%A3o%20Paulo'
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(logInfoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: 'São Paulo',
+        result: 'resolved',
+        resolved: true,
+        provider: 'photon',
+        name: 'A Place',
+        confidence: 0
+      }),
+      'geocoding completed'
+    );
+    await app.close();
+  });
+
+  it('logs structured info when geocoding returns not found', async () => {
+    const search = vi.fn(async () => null);
+    const app = createApp({
+      geocoder: { search },
+      logLevel: 'silent',
+      helmet: { enabled: false }
+    });
+
+    const logInfoSpy = vi.spyOn(app.log, 'info');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/search?q=nonexistent123'
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(logInfoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: 'nonexistent123',
+        result: 'not_found',
+        resolved: false
+      }),
+      'geocoding completed'
+    );
+    // Verify that provider/name/confidence are NOT logged when result is null
+    const callArg = logInfoSpy.mock.calls[0]?.[0];
+    expect(callArg).not.toHaveProperty('provider');
+    expect(callArg).not.toHaveProperty('name');
+    expect(callArg).not.toHaveProperty('confidence');
+    await app.close();
+  });
 });
