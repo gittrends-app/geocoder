@@ -4,6 +4,7 @@ import {
   isDefaultNominatimServer,
   normalizeOsmServerUrl,
   parseCacheSize,
+  parseLogLevel,
   parsePort,
   parseRateLimitWindow,
   parseShutdownTimeout,
@@ -105,5 +106,30 @@ describe('CLI configuration validation', () => {
     expect(() => parseEnv({ PORT: 'NaN' })).toThrow();
     expect(() => parseEnv({ NODE_ENV: 'staging' })).toThrow();
     expect(() => parseEnv({ OSM_SERVER: 'http://localhost' })).toThrow();
+  });
+
+  it.each(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])(
+    'accepts valid log level %s',
+    (level) => {
+      expect(parseLogLevel(level)).toBe(level);
+      expect(parseLogLevel(level.toUpperCase())).toBe(level);
+    }
+  );
+
+  it('defaults LOG_LEVEL to info when absent', () => {
+    const parsed = parseEnv({});
+    expect(parsed.LOG_LEVEL).toBe('info');
+  });
+
+  it('parses LOG_LEVEL from environment', () => {
+    const parsed = parseEnv({ LOG_LEVEL: 'debug' });
+    expect(parsed.LOG_LEVEL).toBe('debug');
+  });
+
+  it('rejects invalid LOG_LEVEL values', () => {
+    expect(() => parseLogLevel('invalid')).toThrow();
+    expect(() => parseLogLevel('')).toThrow();
+    expect(() => parseLogLevel('  ')).toThrow();
+    expect(() => parseEnv({ LOG_LEVEL: 'verbose' })).toThrow();
   });
 });

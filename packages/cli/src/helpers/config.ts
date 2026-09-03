@@ -180,3 +180,25 @@ export function validateHost(value: unknown): string {
   }
   return host;
 }
+
+export const VALID_LOG_LEVELS = [
+  'fatal',
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace',
+  'silent'
+] as const;
+export type LogLevel = (typeof VALID_LOG_LEVELS)[number];
+
+export function parseLogLevel(value: unknown): LogLevel {
+  if (typeof value !== 'string' || !value.trim()) {
+    invalid('LOG_LEVEL', value, `must be one of: ${VALID_LOG_LEVELS.join(', ')}`);
+  }
+  const level = value.trim().toLowerCase();
+  if (!VALID_LOG_LEVELS.includes(level as LogLevel)) {
+    invalid('LOG_LEVEL', value, `must be one of: ${VALID_LOG_LEVELS.join(', ')}`);
+  }
+  return level as LogLevel;
+}

@@ -66,6 +66,14 @@ A resposta será:
 
 Ou acessar <http://localhost:3000/docs> para navegar pela documentação Swagger do projeto.
 
+### Configuração do logger
+
+O nível de logging pode ser controlado via variável de ambiente `LOG_LEVEL`. Níveis válidos: `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`. Padrão: `info`.
+
+```bash
+LOG_LEVEL=debug npx gittrends-app/geocoder
+```
+
 ## Cache de resultados
 
 Com intuito de otimizar o uso das requisições da API, a aplicação faz uso de uma base que armazena os resultados de consultas anteriores. Assim, antes de realizar a consulta aos serviços externos, a aplicação verifica se a localização já foi resolvida anteriormente. Em caso positivo, ele reutiliza os resultados obtidos. Caso contrário, realiza a consulta a API. Essa abordagem permite acelerar o processo usando de resultados locais.

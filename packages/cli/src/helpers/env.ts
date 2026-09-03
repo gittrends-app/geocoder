@@ -3,6 +3,7 @@ import {
   DEFAULT_OSM_SERVER,
   normalizeOsmServerUrl,
   parseCacheSize,
+  parseLogLevel,
   parsePort,
   parseShutdownTimeout,
   validateCacheDirectory,
@@ -17,6 +18,7 @@ export const EnvSchema = z.object({
   PORT: z.preprocess((value) => parsePort(value ?? 3000), z.number()),
   HOST: z.preprocess((value) => validateHost(value ?? 'localhost'), z.string()),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  LOG_LEVEL: z.preprocess((value) => parseLogLevel(value ?? 'info'), z.string()),
   OSM_SERVER: z.preprocess(
     (value) => normalizeOsmServerUrl(value ?? DEFAULT_OSM_SERVER),
     z.string()

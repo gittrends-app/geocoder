@@ -92,7 +92,8 @@ program
         concurrency: 1,
         minConfidence: 0
       },
-      debug: env.NODE_ENV === 'development'
+      debug: env.NODE_ENV === 'development',
+      logLevel: env.LOG_LEVEL
     });
 
     try {

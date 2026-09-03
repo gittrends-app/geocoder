@@ -53,6 +53,7 @@ type AppOptions = {
   geocoder: OpenStreetMapOptions | Geocoder;
   cache?: Partial<{ dirname: string; size: number }>;
   debug?: boolean;
+  logLevel?: string;
   rateLimit?: { max?: number; timeWindow?: string; redis?: string; maxKeys?: number };
   helmet?: { enabled?: boolean };
 };
@@ -94,7 +95,8 @@ export function createApp(options: AppOptions): FastifyInstance {
       }
     : undefined;
 
-  const app = fastify({ logger: options.debug, trustProxy: false });
+  const logger = options.logLevel ? { level: options.logLevel } : options.debug;
+  const app = fastify({ logger, trustProxy: false });
 
   app.setErrorHandler((error, request, reply) => {
     app.log.error({ err: error, url: request.url }, 'request failed');
