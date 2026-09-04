@@ -29,7 +29,7 @@ RUN mkdir -p /app/.cache
 
 # Set environment variables
 ENV NODE_NO_WARNINGS=1
-ENV CACHE_DIR=/app/.cache CACHE_SIZE=10000
+ENV CACHE_DIR=/app/.cache CACHE_SIZE=10000 CONCURRENCY=1
 ENV HOST=:: PORT=80 NODE_ENV=production
 ENV OSM_SERVER=https://nominatim.geocoding.ai
 EXPOSE 80

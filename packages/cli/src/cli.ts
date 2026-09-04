@@ -8,6 +8,7 @@ import {
   isDefaultNominatimServer,
   normalizeOsmServerUrl,
   parseCacheSize,
+  parseConcurrency,
   parsePort,
   validateCacheDirectory,
   validateEmail,
@@ -61,6 +62,12 @@ program
       .argParser(commanderParser(parseCacheSize))
   )
   .addOption(
+    new Option('--concurrency <CONCURRENCY>', 'Number of concurrent geocoding requests')
+      .default(env.CONCURRENCY)
+      .env('CONCURRENCY')
+      .argParser(commanderParser(parseConcurrency))
+  )
+  .addOption(
     new Option('-H, --host <HOST>', 'Host to listen on')
       .default(env.HOST)
       .env('HOST')
@@ -89,7 +96,7 @@ program
         osmServer: normalizedOsmServer,
         email: osmEmail,
         userAgent: osmAgent,
-        concurrency: 1,
+        concurrency: options.concurrency,
         minConfidence: 0
       },
       debug: env.NODE_ENV === 'development',

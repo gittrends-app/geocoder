@@ -3,6 +3,7 @@ import {
   DEFAULT_OSM_SERVER,
   normalizeOsmServerUrl,
   parseCacheSize,
+  parseConcurrency,
   parseLogLevel,
   parsePort,
   parseShutdownTimeout,
@@ -27,6 +28,7 @@ export const EnvSchema = z.object({
   OSM_USER_AGENT: optionalString(z.string().transform(validateUserAgent).optional()),
   CACHE_DIR: optionalString(z.string().transform(validateCacheDirectory).optional()),
   CACHE_SIZE: z.preprocess((value) => parseCacheSize(value ?? 1000), z.number()),
+  CONCURRENCY: z.preprocess((value) => parseConcurrency(value ?? 1), z.number()),
   GRACEFUL_SHUTDOWN_TIMEOUT_MS: z.preprocess(
     (value) => parseShutdownTimeout(value ?? 30_000),
     z.number()

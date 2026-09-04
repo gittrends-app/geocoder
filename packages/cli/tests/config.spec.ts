@@ -4,6 +4,7 @@ import {
   isDefaultNominatimServer,
   normalizeOsmServerUrl,
   parseCacheSize,
+  parseConcurrency,
   parseLogLevel,
   parsePort,
   parseRateLimitWindow,
@@ -60,6 +61,13 @@ describe('CLI configuration validation', () => {
     expect(() => validateCacheDirectory('\u0000cache')).toThrow();
     expect(() => validateEmail('not-an-email')).toThrow();
     expect(() => validateUserAgent('')).toThrow();
+  });
+
+  it('validates positive concurrency values', () => {
+    expect(parseConcurrency('4')).toBe(4);
+    expect(() => parseConcurrency(0)).toThrow();
+    expect(() => parseConcurrency(-1)).toThrow();
+    expect(() => parseConcurrency(1.5)).toThrow();
   });
 
   it.each(['\t', '\n', '\r'])('rejects C0 control character %j in shared validators', (control) => {
@@ -119,6 +127,18 @@ describe('CLI configuration validation', () => {
   it('defaults LOG_LEVEL to info when absent', () => {
     const parsed = parseEnv({});
     expect(parsed.LOG_LEVEL).toBe('info');
+  });
+
+  it('defaults CONCURRENCY to 1 when absent', () => {
+    expect(parseEnv({}).CONCURRENCY).toBe(1);
+  });
+
+  it('parses CONCURRENCY from environment', () => {
+    expect(parseEnv({ CONCURRENCY: '8' }).CONCURRENCY).toBe(8);
+  });
+
+  it.each(['0', '-1', '1.5', 'NaN', ''])('rejects invalid CONCURRENCY value %s', (value) => {
+    expect(() => parseEnv({ CONCURRENCY: value })).toThrow();
   });
 
   it('parses LOG_LEVEL from environment', () => {

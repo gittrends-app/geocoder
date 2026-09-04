@@ -86,6 +86,10 @@ export function parseCacheSize(value: unknown): number {
   return parseBoundedInteger(value, 'CACHE_SIZE', 0, MAX_CACHE_SIZE);
 }
 
+export function parseConcurrency(value: unknown): number {
+  return parseBoundedInteger(value, 'CONCURRENCY', 1, Number.MAX_SAFE_INTEGER);
+}
+
 export function parseShutdownTimeout(value: unknown): number {
   return parseBoundedInteger(value, 'GRACEFUL_SHUTDOWN_TIMEOUT_MS', 100, MAX_SHUTDOWN_TIMEOUT_MS);
 }
