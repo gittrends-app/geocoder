@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   type Address,
@@ -259,5 +262,28 @@ describe('HTTP application boundaries', () => {
     expect(cacheIdentity(base)).toEqual(same);
     expect(cacheIdentity(base)).not.toEqual(changedLanguage);
     expect(cacheIdentity(base)).not.toEqual(changedServer);
+  });
+
+  it('persists cached results to the sqlite secondary store across app instances', async () => {
+    const dirname = mkdtempSync(path.join(tmpdir(), 'geocoder-cache-'));
+    try {
+      const search = vi.fn(async (query: string) => address(query));
+      const first = createApp({ geocoder: { search }, cache: { size: 10, dirname } });
+      const firstResponse = await first.inject('/search?q=persisted');
+      expect(firstResponse.statusCode).toBe(200);
+      await first.close();
+      // Give the fire-and-forget cache write a tick to flush to disk.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const second = createApp({ geocoder: { search }, cache: { size: 10, dirname } });
+      const secondResponse = await second.inject('/search?q=persisted');
+      expect(secondResponse.statusCode).toBe(200);
+      await second.close();
+
+      // A fresh in-memory LRU means a hit here only happens via the sqlite secondary store.
+      expect(search).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(dirname, { recursive: true, force: true });
+    }
   });
 });

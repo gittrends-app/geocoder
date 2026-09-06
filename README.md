@@ -76,7 +76,7 @@ const address = await geocoder.search('Brazil');
 `Cache` TTLs are milliseconds; `0` means no expiry. It caches successful
 results and not-found results separately, normalizes cache keys, and can use a
 secondary Keyv store options. The CLI's persistent cache is a file named
-`geocoder-cache.json` under `CACHE_DIR`; treat retained queries and results as
+`geocoder-cache.sqlite` under `CACHE_DIR`; treat retained queries and results as
 data that may need an expiry or deletion policy.
 
 Results contain `source`, `name`, `type`, `confidence`, `provider`, and may

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
+import KeyvSqlite from '@keyv/sqlite';
 import fastify, { FastifyInstance } from 'fastify';
 import {
   jsonSchemaTransform,
@@ -8,7 +9,6 @@ import {
   validatorCompiler,
   ZodTypeProvider
 } from 'fastify-type-provider-zod';
-import { KeyvFile } from 'keyv-file';
 import { z } from 'zod';
 import {
   AddressSchema,
@@ -82,12 +82,14 @@ function applyCache(
     positiveTtl: options.positiveTtl,
     negativeTtl: options.negativeTtl,
     secondary: options.dirname
-      ? new KeyvFile({
-          filename: path.resolve(
-            validateCacheDirectory(options.dirname) as string,
-            'geocoder-cache.json'
+      ? {
+          store: new KeyvSqlite(
+            `sqlite://${path.resolve(
+              validateCacheDirectory(options.dirname) as string,
+              'geocoder-cache.sqlite'
+            )}`
           )
-        })
+        }
       : undefined
   });
 }
