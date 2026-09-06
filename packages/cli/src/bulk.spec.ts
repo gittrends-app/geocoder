@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { type Address } from '../../core/src/index.js';
-import { runBulk } from '../src/bulk.js';
-import { bulkContinueOnError, createProgram } from '../src/cli.js';
+import { runBulk } from './bulk.js';
+import { bulkContinueOnError, createProgram } from './cli.js';
 
 describe('bulk CLI workflow', () => {
   it('deduplicates input, emits NDJSON, and reports progress on stderr', async () => {

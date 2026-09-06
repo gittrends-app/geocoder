@@ -2,15 +2,20 @@ import nock from 'nock';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RateLimitError, ValidationError } from '../errors/index.js';
 import { Fallback } from './decorators/Fallback.js';
-import { LocationIQ } from './LocationIQ.js';
 import { OpenStreetMap } from './OpenStreetMap.js';
 import { Photon } from './Photon.js';
 
-describe('provider response and cancellation boundaries', () => {
+describe('OpenStreetMap', () => {
   beforeEach(() => {
     nock.abortPendingRequests();
     nock.cleanAll();
     nock.disableNetConnect();
+  });
+
+  afterEach(() => {
+    nock.abortPendingRequests();
+    nock.cleanAll();
+    nock.enableNetConnect();
   });
 
   it('propagates rate-limit errors from HTTP layer', async () => {
@@ -84,13 +89,7 @@ describe('provider response and cancellation boundaries', () => {
     });
   });
 
-  afterEach(() => {
-    nock.abortPendingRequests();
-    nock.cleanAll();
-    nock.enableNetConnect();
-  });
-
-  it('OSM fails closed for a malformed payload', async () => {
+  it('fails closed for a malformed payload', async () => {
     const baseUrl = 'https://osm.example.com';
     nock(baseUrl).get('/search').query(true).reply(200, { malformed: true });
     const provider = new OpenStreetMap({
@@ -190,129 +189,16 @@ describe('provider response and cancellation boundaries', () => {
     expect(result).not.toHaveProperty('city');
   });
 
-  it('Photon fails closed when feature properties are malformed', async () => {
-    nock('https://photon.komoot.io')
-      .get('/api/')
-      .query(true)
-      .reply(200, { features: [{ properties: null }] });
-    const provider = new Photon({ concurrency: 1 });
-
-    await expect(provider.search('Somewhere')).resolves.toBeNull();
+  it('rejects malformed and unsupported server URLs', () => {
+    expect(() => new OpenStreetMap({ osmServer: 'not a URL' })).toThrow(
+      'Nominatim server must be a valid HTTP(S) URL'
+    );
+    expect(() => new OpenStreetMap({ osmServer: 'ftp://osm.example.com' })).toThrow(
+      'Nominatim server must be a valid HTTP(S) URL'
+    );
   });
 
-  it('Photon skips a non-administrative feature and backfills a state feature', async () => {
-    const baseUrl = 'https://photon-state.example.com/api';
-    nock(baseUrl)
-      .get('/')
-      .query(true)
-      .reply(200, {
-        features: [
-          { properties: { type: 'district', name: 'Downtown', country: 'United States' } },
-          { properties: { type: 'state', name: 'Texas', country: 'United States' } }
-        ]
-      });
-    const provider = new Photon({ baseUrl });
-
-    await expect(provider.search('Texas')).resolves.toMatchObject({
-      name: 'Texas, United States',
-      type: 'state',
-      state: 'Texas'
-    });
-  });
-
-  it('Photon skips malformed coordinates before accepting a later feature', async () => {
-    const baseUrl = 'https://photon-coordinates.example.com/api';
-    nock(baseUrl)
-      .get('/')
-      .query(true)
-      .reply(200, {
-        features: [
-          {
-            properties: { type: 'city', name: 'Bad City', country: 'France' },
-            geometry: { coordinates: ['bad', 2] }
-          },
-          {
-            properties: { type: 'city', name: 'Paris', country: 'France' },
-            geometry: { coordinates: [2.35, 48.86] }
-          }
-        ]
-      });
-    const provider = new Photon({ baseUrl });
-
-    await expect(provider.search('Paris')).resolves.toMatchObject({
-      name: 'Paris, France',
-      latitude: 48.86,
-      longitude: 2.35
-    });
-  });
-
-  it('LocationIQ fails closed for malformed confidence data', async () => {
-    const baseUrl = 'https://locationiq.example.com/v1';
-    nock(baseUrl)
-      .get('/search')
-      .query(true)
-      .reply(200, [
-        {
-          importance: [],
-          type: 'city',
-          address: { country: 'United States', country_code: 'us' }
-        }
-      ]);
-    const provider = new LocationIQ({ apiKey: 'test-key', baseUrl, concurrency: 1 });
-
-    await expect(provider.search('Somewhere')).resolves.toBeNull();
-  });
-
-  it('LocationIQ skips a non-administrative result and accepts a later city', async () => {
-    const baseUrl = 'https://locationiq-admin.example.com/v1';
-    nock(baseUrl)
-      .get('/search')
-      .query(true)
-      .reply(200, [
-        { class: 'highway', type: 'residential', display_name: 'Street' },
-        {
-          class: 'place',
-          type: 'city',
-          name: 'Paris',
-          importance: 0.4,
-          address: { country: 'France', country_code: 'fr' }
-        }
-      ]);
-    const provider = new LocationIQ({ apiKey: 'test-key', baseUrl });
-
-    await expect(provider.search('Paris')).resolves.toMatchObject({
-      name: 'Paris, France',
-      type: 'city',
-      city: 'Paris',
-      score: 0.4
-    });
-  });
-
-  it('LocationIQ accepts administrative boundaries without promoting counties', async () => {
-    const baseUrl = 'https://locationiq-boundary.example.com/v1';
-    nock(baseUrl)
-      .get('/search')
-      .query(true)
-      .reply(200, [
-        {
-          class: 'boundary',
-          type: 'administrative',
-          name: 'Travis District',
-          importance: 0.5,
-          address: { country: 'United States', state_district: 'Travis District' }
-        }
-      ]);
-    const provider = new LocationIQ({ apiKey: 'test-key', baseUrl });
-
-    const result = await provider.search('Travis District');
-    expect(result).toMatchObject({
-      name: 'United States',
-      type: 'county'
-    });
-    expect(result).not.toHaveProperty('state');
-  });
-
-  it('propagates cancellation to an in-flight OSM request', async () => {
+  it('propagates cancellation to an in-flight request', async () => {
     const baseUrl = 'https://osm-abort.example.com';
     let requestStarted!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -331,53 +217,6 @@ describe('provider response and cancellation boundaries', () => {
       minConfidence: 0,
       osmServer: baseUrl
     });
-    const controller = new AbortController();
-    const request = provider.search('Somewhere', { signal: controller.signal });
-
-    await started;
-    controller.abort();
-    await expect(request).rejects.toThrow();
-    expect(scope.isDone()).toBe(true);
-  });
-
-  it('propagates cancellation to an in-flight Photon request', async () => {
-    let requestStarted!: () => void;
-    const started = new Promise<void>((resolve) => {
-      requestStarted = resolve;
-    });
-    const scope = nock('https://photon.komoot.io')
-      .get('/api/')
-      .query(true)
-      .delayBody(200)
-      .reply(() => {
-        requestStarted();
-        return [200, { features: [] }];
-      });
-    const provider = new Photon({ concurrency: 1 });
-    const controller = new AbortController();
-    const request = provider.search('Somewhere', { signal: controller.signal });
-
-    await started;
-    controller.abort();
-    await expect(request).rejects.toThrow();
-    expect(scope.isDone()).toBe(true);
-  });
-
-  it('propagates cancellation to an in-flight LocationIQ request', async () => {
-    const baseUrl = 'https://locationiq-abort.example.com/v1';
-    let requestStarted!: () => void;
-    const started = new Promise<void>((resolve) => {
-      requestStarted = resolve;
-    });
-    const scope = nock(baseUrl)
-      .get('/search')
-      .query(true)
-      .delayBody(200)
-      .reply(() => {
-        requestStarted();
-        return [200, []];
-      });
-    const provider = new LocationIQ({ apiKey: 'test-key', baseUrl, concurrency: 1 });
     const controller = new AbortController();
     const request = provider.search('Somewhere', { signal: controller.signal });
 

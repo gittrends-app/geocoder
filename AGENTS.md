@@ -23,8 +23,8 @@
   - single test: `npx vitest run src/geocoder/decorators/Cache.spec.ts`
   - build: clean + tsup bundle + `tsc --emitDeclarationOnly`
 - CLI (`packages/cli`):
-  - `yarn test` runs `vitest run tests`
-  - single test: `npx vitest run tests/rateLimit.spec.ts`
+  - `yarn test` runs `vitest run src`
+  - single test: `npx vitest run src/app.spec.ts`
   - dev server: `yarn dev` (loads env via `dotenv-flow/config`)
 
 ## Repo-Specific Gotchas

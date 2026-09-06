@@ -16,7 +16,7 @@
     "lint:fix": "biome check --write ./src",
     "format": "biome format --write ./src",
     "build": "shx rm -rf dist && tsup-node --config tsup.config.mjs src/cli.ts --minify --format esm --clean",
-    "test": "vitest run tests",
+    "test": "vitest run src",
     "typecheck": "tsc --noEmit",
     "dev": "tsx watch -r \"dotenv-flow/config\" src/cli.ts",
     "start": "node -r \"dotenv-flow/config\" dist/cli.js",

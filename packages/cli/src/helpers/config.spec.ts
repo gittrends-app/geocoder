@@ -14,8 +14,8 @@ import {
   validateCacheDirectory,
   validateEmail,
   validateUserAgent
-} from '../src/helpers/config.js';
-import { parseEnv } from '../src/helpers/env.js';
+} from './config.js';
+import { parseEnv } from './env.js';
 
 describe('CLI configuration validation', () => {
   it('normalizes safe HTTPS OSM base URLs', () => {

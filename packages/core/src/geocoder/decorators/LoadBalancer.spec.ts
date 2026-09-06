@@ -200,4 +200,30 @@ describe('LoadBalancer', () => {
       await expect(request2).resolves.toBeDefined();
     });
   });
+
+  it('reports queue stats for each provider', () => {
+    const loadBalancer = new LoadBalancer([mockGeocoder1, mockGeocoder2]);
+
+    expect(loadBalancer.getStats()).toEqual([
+      { index: 'Fallback #0', queueSize: 0, pending: 0 },
+      { index: 'Fallback #1', queueSize: 0, pending: 0 }
+    ]);
+  });
+
+  it('rejects a provider task that exceeds the configured timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(mockGeocoder1.search).mockImplementation(
+        () => new Promise<Address>(() => undefined)
+      );
+      const loadBalancer = new LoadBalancer([mockGeocoder1], { timeoutMs: 10 });
+      const request = loadBalancer.search('Slow place');
+      const rejection = expect(request).rejects.toThrow();
+
+      await vi.advanceTimersByTimeAsync(10);
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

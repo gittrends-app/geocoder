@@ -276,4 +276,77 @@ describe('Cache decorator - deduplication and non-blocking writes', () => {
     expect(firstSearch).toHaveBeenCalledOnce();
     expect(secondSearch).toHaveBeenCalledOnce();
   });
+
+  it('propagates cache read failures without calling the provider', async () => {
+    const search = vi.fn();
+    const cache = new Cache({ search } as unknown as Geocoder);
+    const readError = new Error('cache unavailable');
+    (cache as any).cache.get = vi.fn().mockRejectedValue(readError);
+
+    await expect(cache.search('Paris')).rejects.toBe(readError);
+    expect(search).not.toHaveBeenCalled();
+  });
+
+  it('rejects an already aborted request before reading the cache', async () => {
+    const search = vi.fn();
+    const cache = new Cache({ search } as unknown as Geocoder);
+    const get = vi.spyOn((cache as any).cache, 'get');
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(cache.search('Paris', { signal: controller.signal })).rejects.toBeInstanceOf(
+      RequestAbortedError
+    );
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('does not reject when a fire-and-forget cache write fails', async () => {
+    const address = {
+      provider: 'photon',
+      source: 'Paris',
+      name: 'Paris, France',
+      type: 'city',
+      confidence: 0,
+      country: 'France'
+    } as Address;
+    const cache = new Cache({ search: vi.fn().mockResolvedValue(address) } as unknown as Geocoder);
+    (cache as any).cache.set = vi.fn().mockRejectedValue(new Error('cache write failed'));
+
+    await expect(cache.search('Paris')).resolves.toEqual(address);
+    await Promise.resolve();
+  });
+
+  it('does not cache a result after every caller aborts in flight', async () => {
+    let resolveProvider!: (address: Address | null) => void;
+    const search = vi.fn(
+      () => new Promise<Address | null>((resolve) => (resolveProvider = resolve))
+    );
+    const cache = new Cache({ search } as unknown as Geocoder);
+    const controller = new AbortController();
+    const request = cache.search('aborted result', { signal: controller.signal });
+    await vi.waitFor(() => expect(search).toHaveBeenCalledOnce());
+
+    controller.abort();
+    await expect(request).rejects.toBeInstanceOf(RequestAbortedError);
+    resolveProvider(null);
+    await vi.waitFor(() => expect((cache as any).pending.size).toBe(0));
+    expect(await (cache as any).cache.get('aborted result')).toBeUndefined();
+  });
+
+  it.each([
+    [{ ttl: -1 }, 'Cache TTL'],
+    [{ ttl: Number.POSITIVE_INFINITY }, 'Cache TTL'],
+    [{ size: 0 }, 'Cache size']
+  ])('rejects invalid cache options', (options, message) => {
+    expect(() => new Cache({ search: vi.fn() } as unknown as Geocoder, options)).toThrow(message);
+  });
+
+  it('rejects a cache configuration that cannot be serialized', () => {
+    const config: Record<string, unknown> = {};
+    config.self = config;
+
+    expect(() => new Cache({ search: vi.fn() } as unknown as Geocoder, { config })).toThrow(
+      'Cache config must be serializable'
+    );
+  });
 });
