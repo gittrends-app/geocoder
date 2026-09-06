@@ -20,25 +20,20 @@ describe('AddressSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it.each([
-    false,
-    '',
-    [],
-    [0],
-    {},
-    Number.NaN,
-    Number.POSITIVE_INFINITY
-  ])('rejects malformed confidence value %j', (confidence) => {
-    const result = AddressSchema.safeParse({
-      source: 'query',
-      name: 'Place',
-      type: 'city',
-      confidence,
-      provider: 'photon'
-    });
+  it.each([false, '', [], [0], {}, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects malformed confidence value %j',
+    (confidence) => {
+      const result = AddressSchema.safeParse({
+        source: 'query',
+        name: 'Place',
+        type: 'city',
+        confidence,
+        provider: 'photon'
+      });
 
-    expect(result.success).toBe(false);
-  });
+      expect(result.success).toBe(false);
+    }
+  );
 
   it('accepts a finite numeric confidence string for provider compatibility', () => {
     const result = AddressSchema.safeParse({

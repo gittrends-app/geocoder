@@ -1,4 +1,13 @@
 .turbo
+.git
+.env*
+**/.env*
 dist
 node_modules
+coverage
+**/coverage
+**/tests
+**/*.spec.ts
+**/*.test.ts
+**/*.md
 Dockerfile

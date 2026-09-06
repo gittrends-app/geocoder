@@ -11,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js 20
+      - name: Use Node.js 22.12.0
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22.12.0"
       - name: Install
         run: yarn install --frozen-lockfile
       - name: Audit (npm audit)
-        run: yarn audit --level=high || true
+        run: yarn audit --level=high
       - name: Run Snyk (optional)
         if: env.SNYK_TOKEN != ''
         uses: snyk/actions/node@master

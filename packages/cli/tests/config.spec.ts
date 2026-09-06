@@ -78,16 +78,12 @@ describe('CLI configuration validation', () => {
     expect(() => validateCacheDirectory(`cache${control}dir`)).toThrow();
   });
 
-  it.each([
-    'localhost',
-    'example.test',
-    '127.0.0.1',
-    '::1',
-    '[::1]',
-    '2001:db8::1'
-  ])('accepts valid host or IP literal %s', (host) => {
-    expect(() => parseEnv({ HOST: host })).not.toThrow();
-  });
+  it.each(['localhost', 'example.test', '127.0.0.1', '::1', '[::1]', '2001:db8::1'])(
+    'accepts valid host or IP literal %s',
+    (host) => {
+      expect(() => parseEnv({ HOST: host })).not.toThrow();
+    }
+  );
 
   it.each([
     'https://example.test',
@@ -122,18 +118,13 @@ describe('CLI configuration validation', () => {
     expect(() => parseEnv({ OSM_SERVER: 'http://localhost' })).toThrow();
   });
 
-  it.each([
-    'fatal',
-    'error',
-    'warn',
-    'info',
-    'debug',
-    'trace',
-    'silent'
-  ])('accepts valid log level %s', (level) => {
-    expect(parseLogLevel(level)).toBe(level);
-    expect(parseLogLevel(level.toUpperCase())).toBe(level);
-  });
+  it.each(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])(
+    'accepts valid log level %s',
+    (level) => {
+      expect(parseLogLevel(level)).toBe(level);
+      expect(parseLogLevel(level.toUpperCase())).toBe(level);
+    }
+  );
 
   it('defaults LOG_LEVEL to info when absent', () => {
     const parsed = parseEnv({});

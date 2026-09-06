@@ -262,6 +262,7 @@ export function createApp(options: AppOptions): FastifyInstance {
     app.addHook('onClose', async () => clearInterval(cleanupTimer));
 
     app.addHook('onRequest', async (req, reply) => {
+      if (req.url.split('?')[0] === '/health/live') return;
       try {
         const key = String(req.ip || 'unknown');
         const now = Date.now();
@@ -422,6 +423,12 @@ export function createApp(options: AppOptions): FastifyInstance {
         timestamp: new Date().toISOString(),
         uptime: process.uptime()
       });
+    });
+    app.get('/health/ready', async (req, res) => {
+      res.send({ ready: true });
+    });
+    app.get('/health/live', async (req, res) => {
+      res.send({ alive: true });
     });
   });
 

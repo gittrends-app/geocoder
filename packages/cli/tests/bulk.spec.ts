@@ -97,7 +97,11 @@ describe('bulk CLI workflow', () => {
     await runBulk({
       input: 'done\nbad\n',
       resume: '{"query":"done","ok":true}\n',
-      geocoder: { search: async () => { throw new Error('failed'); } },
+      geocoder: {
+        search: async () => {
+          throw new Error('failed');
+        }
+      },
       continueOnError: true,
       write: () => undefined,
       progress: (line) => progress.push(line)

@@ -15,23 +15,21 @@
     "lint": "biome check ./src",
     "lint:fix": "biome check --write ./src",
     "format": "biome format --write ./src",
-    "build": "shx rm -rf dist && tsup-node src/cli.ts --minify --format esm --clean",
+    "build": "shx rm -rf dist && tsup-node --config tsup.config.mjs src/cli.ts --minify --format esm --clean",
     "test": "vitest run tests",
+    "typecheck": "tsc --noEmit",
     "dev": "tsx watch -r \"dotenv-flow/config\" src/cli.ts",
     "start": "node -r \"dotenv-flow/config\" dist/cli.js",
     "prepack": "npx shx cp ../../README.md dist"
   },
   "dependencies": {
     "@fastify/swagger": "^9.6.1",
-    "@fastify/swagger-ui": "^5.2.3",
+    "@fastify/swagger-ui": "^6.1.1",
     "@gittrends-app/geocoder": "file:../core",
-    "commander": "^14.0.2",
-    "fastify": "^5.6.2",
-    "fastify-type-provider-zod": "^6.1.0",
+    "commander": "^15.0.0",
+    "fastify": "^5.12.3",
+    "fastify-type-provider-zod": "^7.0.0",
     "keyv-file": "^5.3.3",
     "zod": "^4.2.1"
-  },
-  "devDependencies": {
-    "vite-tsconfig-paths": "^6.0.5"
   }
 }

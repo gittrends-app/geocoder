@@ -77,7 +77,7 @@ describe('Rate Limiting', () => {
     expect(second.statusCode).toBe(404);
   });
 
-  it('applies the rate limit to health checks', async () => {
+  it('applies the rate limit to normal health checks but not liveness', async () => {
     const app = createApp({
       geocoder: { search: async () => null },
       rateLimit: { max: 1, timeWindow: '1 minute' }
@@ -87,6 +87,7 @@ describe('Rate Limiting', () => {
     expect((await app.inject('/search?q=test')).statusCode).toBe(404);
     expect((await app.inject('/search?q=test')).statusCode).toBe(429);
     expect((await app.inject('/health')).statusCode).toBe(429);
+    expect((await app.inject('/health/live')).statusCode).toBe(200);
   });
 
   it('expires entries after the configured window', async () => {

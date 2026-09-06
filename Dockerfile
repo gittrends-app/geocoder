@@ -12,7 +12,7 @@ RUN yarn install --production --frozen-lockfile --ignore-scripts
 # Stage 3: Build
 FROM base AS build
 COPY . .
-RUN yarn install
+RUN yarn install --frozen-lockfile
 RUN yarn build
 
 # Stage 4: Release

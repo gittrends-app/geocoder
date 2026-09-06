@@ -2,16 +2,14 @@
   "extends": "@tsconfig/node20/tsconfig.json",
   "compilerOptions": {
     "module": "NodeNext",
-    "rootDir": "./src",
+    "rootDir": "../",
     "outDir": "./dist",
-    "baseUrl": "./",
     "resolveJsonModule": true,
     "paths": {
       "@/core": ["../core/src/index.ts"]
     },
     "declaration": false
   },
-  "references": [{ "path": "../core" }],
   "include": ["src/**/*"],
   "exclude": ["node_modules", "src/**/*.spec.ts", "src/**/*.test.ts"]
 }

@@ -132,6 +132,14 @@ describe('HTTP application boundaries', () => {
     await app.close();
   });
 
+  it('exposes readiness and liveness health endpoints', async () => {
+    const app = createApp({ geocoder: { search: async () => null } });
+
+    expect((await app.inject('/health/ready')).json()).toEqual({ ready: true });
+    expect((await app.inject('/health/live')).json()).toEqual({ alive: true });
+    await app.close();
+  });
+
   it('reports local health status without depending on provider results', async () => {
     const app = makeApp(async () => null);
 
