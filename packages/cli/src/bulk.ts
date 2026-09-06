@@ -1,5 +1,5 @@
 import { Geocoder, normalizeQuery } from '@/core';
-import { parseConcurrency, parseProviders, parseRateProfile } from './helpers/config.js';
+import { parseConcurrency } from './helpers/config.js';
 
 export interface BulkOptions {
   /** Newline-delimited queries, already read from a file or stdin. */
@@ -8,9 +8,6 @@ export interface BulkOptions {
   /** Previous NDJSON output, already read from a file. */
   resume?: string;
   continueOnError?: boolean;
-  providers?: string[];
-  rateProfile?: string;
-  publicNominatim?: boolean;
   workers?: number;
   write: (line: string) => void;
   progress: (line: string) => void;
@@ -24,7 +21,6 @@ export interface BulkResult {
 
 /**
  * Process bulk geocoding from input (file/stdin), with dedup, resume, and NDJSON output.
- * Public Nominatim enforces single worker and stricter rate profile.
  */
 export async function runBulk(options: BulkOptions): Promise<BulkResult> {
   const {
@@ -32,27 +28,12 @@ export async function runBulk(options: BulkOptions): Promise<BulkResult> {
     geocoder,
     resume,
     continueOnError = false,
-    providers = ['osm', 'photon'],
-    rateProfile = 'public',
-    publicNominatim,
     workers: requestedWorkers = 1,
     write,
     progress
   } = options;
 
-  const selectedProviders = parseProviders(providers);
-  const profile = parseRateProfile(rateProfile);
   const workers = parseConcurrency(requestedWorkers);
-  // ponytail: public Nominatim bulk must use 1 worker; provider throttling supplies the 4 req/min rate.
-  if (
-    selectedProviders.includes('osm') &&
-    (publicNominatim ?? profile.startsWith('public')) &&
-    workers > 1
-  ) {
-    throw new Error(
-      'Public Nominatim bulk geocoding requires one worker; use a self-hosted OSM server or private provider for parallel'
-    );
-  }
 
   const lines = input
     .split('\n')
@@ -106,7 +87,7 @@ export async function runBulk(options: BulkOptions): Promise<BulkResult> {
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(workers, Math.max(1, pending.length)) }, worker));
+  await Promise.all(Array.from({ length: Math.min(workers, pending.length) }, worker));
   if (firstError !== undefined) throw firstError;
 
   return { processed, succeeded, failed };

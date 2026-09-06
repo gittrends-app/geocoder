@@ -1,6 +1,6 @@
 import nock from 'nock';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RateLimitError, TransientError } from '../errors/index.js';
+import { ProviderError, RateLimitError } from '../errors/index.js';
 import fetch from './fetch.js';
 
 /**
@@ -98,7 +98,7 @@ describe('fetch helper', () => {
 
       await expect(
         fetch('https://timeout-api.example.com/timeout', { timeout: 25 })
-      ).rejects.toBeInstanceOf(TransientError);
+      ).rejects.toMatchObject({ kind: 'transient' });
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(attempts).toBe(1);
@@ -155,28 +155,28 @@ describe('fetch helper', () => {
   });
 
   describe('retry functionality', () => {
-    it('should throw TransientError on 500 server errors', async () => {
+    it('should throw a transient ProviderError on 500 server errors', async () => {
       nock('https://api.example.com').get('/data').reply(500, 'Server Error');
       await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
         /transient|500/i
       );
     });
 
-    it('should throw TransientError on 502 bad gateway', async () => {
+    it('should throw a transient ProviderError on 502 bad gateway', async () => {
       nock('https://api.example.com').get('/data').reply(502, 'Bad Gateway');
       await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
         /transient|502/i
       );
     });
 
-    it('should throw TransientError on 503 service unavailable', async () => {
+    it('should throw a transient ProviderError on 503 service unavailable', async () => {
       nock('https://api.example.com').get('/data').reply(503, 'Service Unavailable');
       await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
         /transient|503/i
       );
     });
 
-    it('should throw PolicyError on 403 forbidden', async () => {
+    it('should throw a policy ProviderError on 403 forbidden', async () => {
       nock('https://api.example.com').get('/data').reply(403, 'Forbidden');
       await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
         /policy|403/i
@@ -200,28 +200,28 @@ describe('fetch helper', () => {
       });
     });
 
-    it('should throw PolicyError on 418 teapot', async () => {
+    it('should throw a policy ProviderError on 418 teapot', async () => {
       nock('https://api.example.com').get('/data').reply(418, "I'm a teapot");
       await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
         /policy|418/i
       );
     });
 
-    it('should throw InvalidRequestError on 404 not found', async () => {
+    it('should throw an invalid-request ProviderError on 404 not found', async () => {
       nock('https://api.example.com').get('/data').reply(404, 'Not Found');
       await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
         /invalid|404/i
       );
     });
 
-    it('should throw InvalidRequestError on 400 bad request', async () => {
+    it('should throw an invalid-request ProviderError on 400 bad request', async () => {
       nock('https://api.example.com').get('/data').reply(400, 'Bad Request');
       await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
         /invalid|400/i
       );
     });
 
-    it('should throw TransientError on network errors', async () => {
+    it('should throw a transient ProviderError on network errors', async () => {
       nock('https://api.example.com').get('/data').replyWithError('Network error');
 
       await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(

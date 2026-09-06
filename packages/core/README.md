@@ -29,11 +29,12 @@ Options are `osmServer`, `email`, `userAgent`, `concurrency`, `language`,
 requires an identifying `User-Agent` and contact email, sending them as the
 `User-Agent` header and `email` query parameter. Although the policy also
 accepts a `Referer`, the core exposes no `Referer` option. Nominatim's public
-maximum is one request per second. The default
-provider queue applies one request per second with one concurrent request.
-Pass a `rate` queue when a custom server's policy needs a different limit. A
-custom server is not automatically self-hosted or covered by the public
-server's terms, so follow its operator's policy.
+maximum is one request per second. The safe default provider queue applies one
+request per second with one concurrent request. Explicit `concurrency` and
+`rate` options are accepted unchanged; the library does not enforce the public
+Nominatim concurrency/rate policy, so following provider terms is the caller's
+responsibility. A custom server is not automatically self-hosted or covered by
+the public server's terms, so follow its operator's policy.
 
 For regular or long-running bulk use, Nominatim requires one thread, caching,
 and no more than four requests per minute. The core provider's one-request-
@@ -108,9 +109,9 @@ secondary-store deletion when retention or privacy requirements demand it.
 
 `confidence` is the provider value used for filtering; it is not a universal
 probability. `score` is the raw provider score when one is exposed.
-OpenStreetMap maps Nominatim `importance` to both fields, LocationIQ uses
-`importance` or `rank_search`, and Photon sets `confidence` to `0` and has no
-score. `minConfidence` applies to OpenStreetMap and LocationIQ.
+OpenStreetMap and LocationIQ map provider `importance` to both fields, while
+Photon sets `confidence` to `0` and has no score. `minConfidence` applies to
+OpenStreetMap and LocationIQ.
 
 ## Nominatim attribution and privacy
 

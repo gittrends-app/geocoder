@@ -1,7 +1,7 @@
 import Debug from 'debug';
 import { Address } from '../../entities/Address.js';
 import { ProviderError, RequestAbortedError } from '../../errors/index.js';
-import { normalizeQueryWithOriginal } from '../../helpers/query.js';
+import { normalizeQuery } from '../../helpers/query.js';
 import { Geocoder } from '../Geocoder.js';
 
 const debug = Debug('geocoder:fallback');
@@ -26,7 +26,7 @@ export class Fallback implements Geocoder {
    * @returns Promise<Address | null> - The address found or null
    */
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
-    const { normalized } = normalizeQueryWithOriginal(q);
+    const normalized = normalizeQuery(q);
     debug('searching with primary geocoder for: %s', normalized);
 
     const abortIfNeeded = () => {

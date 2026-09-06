@@ -46,9 +46,32 @@ describe('AddressSchema', () => {
       name: 'Place',
       type: 'city',
       confidence: '0.75',
+      country: 'France',
       provider: 'photon'
     });
 
     expect(result.success && result.data.confidence).toBe(0.75);
+  });
+
+  it('requires at least one administrative field', () => {
+    expect(
+      AddressSchema.safeParse({
+        source: 'query',
+        name: 'Place',
+        type: 'city',
+        confidence: 0,
+        provider: 'photon'
+      }).success
+    ).toBe(false);
+    expect(
+      AddressSchema.safeParse({
+        source: 'query',
+        name: 'France',
+        type: 'country',
+        confidence: 0,
+        country: 'France',
+        provider: 'photon'
+      }).success
+    ).toBe(true);
   });
 });

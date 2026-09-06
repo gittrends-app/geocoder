@@ -1,14 +1,9 @@
 import { z } from 'zod';
 
-const numericConfidenceString = z
-  .string()
-  .trim()
-  .regex(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u)
-  .transform(Number)
-  .refine(Number.isFinite);
-
 /** Finite confidence values accepted from provider payloads. */
-export const ConfidenceSchema = z.union([z.number().finite(), numericConfidenceString]);
+export const ConfidenceSchema = z
+  .union([z.number(), z.string().trim().min(1).transform(Number)])
+  .pipe(z.number().finite());
 const CoordinateSchema = z.number().finite();
 const BoundingBoxSchema = z.tuple([
   CoordinateSchema,
@@ -17,14 +12,8 @@ const BoundingBoxSchema = z.tuple([
   CoordinateSchema
 ]);
 
-export const AddressSchema = z.preprocess(
-  (data: unknown) => {
-    if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
-    return Object.fromEntries(
-      Object.entries(data).filter(([, value]) => value !== null && value !== undefined)
-    );
-  },
-  z.object({
+export const AddressSchema = z
+  .object({
     source: z.string().trim().min(1).describe('The address to geocode'),
     name: z.string().trim().min(1).describe('The formatted address'),
     type: z.string().trim().min(1).describe('The address type'),
@@ -48,6 +37,8 @@ export const AddressSchema = z.preprocess(
     city: z.string().trim().min(1).optional().describe('The city name'),
     provider: z.enum(['openstreetmap', 'photon', 'locationiq']).describe('The geocoding provider')
   })
-);
+  .refine((data) => Boolean(data.city ?? data.state ?? data.country), {
+    message: 'At least one administrative field is required'
+  });
 
 export type Address = z.infer<typeof AddressSchema>;

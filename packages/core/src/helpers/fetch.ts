@@ -1,30 +1,10 @@
 import Debug from 'debug';
-import fetch, { HTTPError, type Options, type RetryOptions, TimeoutError } from 'ky';
-import { Agent } from 'undici';
-import {
-  AuthenticationError,
-  GeocoderError,
-  InvalidRequestError,
-  PolicyError,
-  RateLimitError,
-  TransientError
-} from '../errors/index.js';
+import fetch, { HTTPError, type Options, TimeoutError } from 'ky';
+import { GeocoderError, ProviderError, RateLimitError } from '../errors/index.js';
 
 const debug = Debug('geocoder:fetch');
 
-// Connection pool dispatcher for long-running services
-const dispatcher = new Agent({
-  connections: 10,
-  pipelining: 1,
-  keepAliveTimeout: 60000,
-  keepAliveMaxTimeout: 600000
-});
-
-export type FetchOptions = Options & { dispatcher?: Agent; provider?: string };
-
-function isCancellation(error: Error, signal?: AbortSignal): boolean {
-  return signal?.aborted === true || error.name === 'AbortError';
-}
+export type FetchOptions = Omit<Options, 'retry'> & { provider?: string };
 
 function retryAfterSeconds(response: Response): number | undefined {
   const value = response.headers.get('retry-after');
@@ -42,22 +22,74 @@ export function classifyFetchError(
 ): Error {
   if (error instanceof GeocoderError) return error;
   if (!(error instanceof Error))
-    return new TransientError(provider, undefined, new Error(String(error)));
+    return new ProviderError(
+      `Transient failure for provider: ${provider}`,
+      provider,
+      undefined,
+      'transient',
+      undefined,
+      new Error(String(error))
+    );
   if (signal?.aborted || error.name === 'AbortError') {
     return error;
   }
   if (error instanceof TimeoutError || error.name === 'TimeoutError')
-    return new TransientError(provider, undefined, error);
+    return new ProviderError(
+      `Transient failure for provider: ${provider}`,
+      provider,
+      undefined,
+      'transient',
+      undefined,
+      error
+    );
   if (error instanceof HTTPError) {
     const status = error.response.status;
     const retryAfter = retryAfterSeconds(error.response);
     if (status === 429) return new RateLimitError(provider, retryAfter, status, error);
-    if (status === 401 || status === 407) return new AuthenticationError(provider, status, error);
-    if (status === 403 || status === 418) return new PolicyError(provider, status, error);
-    if (status >= 400 && status < 500) return new InvalidRequestError(provider, status, error);
-    return new TransientError(provider, status, error, retryAfter);
+    if (status === 401 || status === 407)
+      return new ProviderError(
+        `Authentication failed for provider: ${provider}`,
+        provider,
+        status,
+        'authentication',
+        undefined,
+        error
+      );
+    if (status === 403 || status === 418)
+      return new ProviderError(
+        `Provider policy rejected the request: ${provider}`,
+        provider,
+        status,
+        'policy',
+        undefined,
+        error
+      );
+    if (status >= 400 && status < 500)
+      return new ProviderError(
+        `Invalid request for provider: ${provider}`,
+        provider,
+        status,
+        'invalid-request',
+        undefined,
+        error
+      );
+    return new ProviderError(
+      `Transient failure for provider: ${provider}`,
+      provider,
+      status,
+      'transient',
+      retryAfter,
+      error
+    );
   }
-  return new TransientError(provider, undefined, error);
+  return new ProviderError(
+    `Transient failure for provider: ${provider}`,
+    provider,
+    undefined,
+    'transient',
+    undefined,
+    error
+  );
 }
 
 /**
@@ -70,46 +102,17 @@ export function classifyFetchError(
 export default function <T>(url: string | URL, options?: FetchOptions) {
   debug('fetching: %s', url);
 
-  const {
-    headers: providedHeaders,
-    retry: providedRetry,
-    throwHttpErrors: providedThrowHttpErrors,
-    timeout: providedTimeout,
-    dispatcher: providedDispatcher,
-    provider,
-    ...requestOptions
-  } = options ?? {};
+  const { headers: providedHeaders, provider, ...requestOptions } = options ?? {};
 
   const headers = new Headers(providedHeaders);
   if (!headers.has('User-Agent')) headers.set('User-Agent', 'gittrends-geocoder');
 
-  const customShouldRetry =
-    typeof providedRetry === 'object' && providedRetry ? providedRetry.shouldRetry : undefined;
-  const retry: RetryOptions = {
-    limit: 0,
-    ...(typeof providedRetry === 'number' ? { limit: providedRetry } : providedRetry),
-    shouldRetry: async (state) => {
-      if (isCancellation(state.error, requestOptions.signal ?? undefined)) return false;
-
-      if (customShouldRetry) {
-        return customShouldRetry(state);
-      }
-
-      // Let Ky apply its normal policy when the caller explicitly enabled
-      // retries (for example, with `{retry: {limit: 1}}`).
-      return undefined;
-    }
-  };
-
   return fetch<T>(url, {
     ...requestOptions,
-    retry,
-    timeout: providedTimeout ?? 10000,
-    throwHttpErrors: providedThrowHttpErrors ?? true,
-    headers,
-    // Ky passes this vendor-specific fetch option through to undici.
-    // @ts-expect-error - dispatcher is supported by undici, but not by Ky's Options type
-    dispatcher: providedDispatcher ?? dispatcher
+    retry: { limit: 0 },
+    timeout: options?.timeout ?? 10000,
+    throwHttpErrors: options?.throwHttpErrors ?? true,
+    headers
   }).catch((error: unknown) => {
     throw classifyFetchError(error, provider, requestOptions.signal ?? undefined);
   });

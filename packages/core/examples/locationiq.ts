@@ -1,5 +1,4 @@
 import consola from 'consola';
-import prettyformat from 'pretty-format';
 import { LocationIQ } from '../src/index.js';
 
 (async function main() {
@@ -18,11 +17,11 @@ import { LocationIQ } from '../src/index.js';
 
   // Example searches
   let response = await locationiq.search('Seattle, WA');
-  consola.info(prettyformat(response, { min: true }));
+  consola.info(JSON.stringify(response));
 
   response = await locationiq.search('Earth planet');
-  consola.info(prettyformat(response, { min: true }));
+  consola.info(JSON.stringify(response));
 
   response = await locationiq.search('Brazil');
-  consola.info(prettyformat(response, { min: true }));
+  consola.info(JSON.stringify(response));
 })();

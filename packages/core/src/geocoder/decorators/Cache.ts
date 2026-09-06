@@ -9,14 +9,14 @@ import { Address, AddressSchema } from '../../entities/Address.js';
 import { RequestAbortedError } from '../../errors/index.js';
 import { normalizeQueryWithOriginal } from '../../helpers/query.js';
 import { Geocoder } from '../Geocoder.js';
-import { Decorator } from './Decorator.js';
 
 const debug = Debug('geocoder:cache');
 
 /**
  *  Cached service decorator
  */
-export class Cache extends Decorator {
+export class Cache implements Geocoder {
+  private readonly geocoder: Geocoder;
   private cache: CacheManager;
   private pending = new Map<string, PendingRequest>();
   private positiveTtl: number;
@@ -26,7 +26,7 @@ export class Cache extends Decorator {
    * @param service - Geocoder service
    */
   constructor(service: Geocoder, options: CacheOptions = {}) {
-    super(service);
+    this.geocoder = service;
     const size = options.size ?? 1000;
     validateSize(size);
     const positiveTtl = options.positiveTtl ?? options.ttl ?? 0;
@@ -161,44 +161,18 @@ export class Cache extends Decorator {
 
   private getCached<T>(key: string, query: string, signal?: AbortSignal): Promise<T | undefined> {
     const cachePromise = this.cache.get<T>(key);
-
-    // The cache operation may lose the race to an abort. Mark its rejection
-    // handled even when the caller stops waiting for it.
     cachePromise.catch(() => undefined);
     if (!signal) return cachePromise;
 
-    return new Promise<T | undefined>((resolve, reject) => {
-      let settled = false;
-      const cleanup = () => signal.removeEventListener('abort', onAbort);
-      const onAbort = () => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new RequestAbortedError(query));
-      };
-
+    let onAbort!: () => void;
+    const abortPromise = new Promise<never>((_, reject) => {
+      onAbort = () => reject(new RequestAbortedError(query));
       signal.addEventListener('abort', onAbort, { once: true });
-      if (signal.aborted) {
-        onAbort();
-        return;
-      }
-
-      cachePromise.then(
-        (value) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          if (signal.aborted) reject(new RequestAbortedError(query));
-          else resolve(value);
-        },
-        (error: unknown) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          reject(error);
-        }
-      );
+      if (signal.aborted) onAbort();
     });
+    return Promise.race([cachePromise, abortPromise]).finally(() =>
+      signal.removeEventListener('abort', onAbort)
+    );
   }
 
   private join(
@@ -272,37 +246,15 @@ function validateSize(size: number): void {
 function configNamespace(config: unknown): string {
   let serialized: string;
   try {
-    serialized = stableSerialize(config);
+    const value = JSON.stringify(config);
+    if (value === undefined) throw new TypeError('value is not serializable');
+    serialized = value;
   } catch (error) {
     throw new TypeError(
       `Cache config must be serializable: ${error instanceof Error ? error.message : String(error)}`
     );
   }
   return createHash('sha256').update(serialized).digest('hex').slice(0, 16);
-}
-
-function stableSerialize(value: unknown, seen = new WeakSet<object>()): string {
-  if (value === null) return 'null';
-  if (typeof value === 'string') return JSON.stringify(value);
-  if (typeof value === 'number' || typeof value === 'boolean') return JSON.stringify(value);
-  if (typeof value === 'bigint') return `bigint:${value.toString()}`;
-  if (typeof value !== 'object') return `${typeof value}:${String(value)}`;
-  if (seen.has(value)) throw new Error('circular value');
-  seen.add(value);
-  if (Array.isArray(value)) {
-    const result = `[${value.map((item) => stableSerialize(item, seen)).join(',')}]`;
-    seen.delete(value);
-    return result;
-  }
-  const result = `{${Object.keys(value)
-    .sort()
-    .map(
-      (key) =>
-        `${JSON.stringify(key)}:${stableSerialize((value as Record<string, unknown>)[key], seen)}`
-    )
-    .join(',')}}`;
-  seen.delete(value);
-  return result;
 }
 
 type PendingRequest = {

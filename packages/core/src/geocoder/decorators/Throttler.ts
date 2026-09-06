@@ -2,9 +2,8 @@ import Debug from 'debug';
 import PQueue from 'p-queue';
 import { Address } from '../../entities/Address.js';
 import { ProviderError, RequestAbortedError } from '../../errors/index.js';
-import { normalizeQueryWithOriginal } from '../../helpers/query.js';
+import { normalizeQuery } from '../../helpers/query.js';
 import { Geocoder } from '../Geocoder.js';
-import { Decorator } from './Decorator.js';
 
 const debug = Debug('geocoder:throttler');
 
@@ -16,7 +15,8 @@ export type ThrottlerOptions = NonNullable<ConstructorParameters<typeof PQueue>[
 /**
  * Throttler is a decorator that limits the rate of requests to the geocoder.
  */
-export class Throttler extends Decorator {
+export class Throttler implements Geocoder {
+  private readonly geocoder: Geocoder;
   private queue;
 
   /**
@@ -24,7 +24,7 @@ export class Throttler extends Decorator {
    * @param geocoder - Geocoder service
    */
   constructor(geocoder: Geocoder, options: ThrottlerOptions) {
-    super(geocoder);
+    this.geocoder = geocoder;
     const { retries: _retries, retryDelay: _retryDelay, ...queueOptions } = options;
     this.retries = nonNegativeInteger(_retries ?? 0, 'retries');
     this.retryDelay = nonNegativeNumber(_retryDelay ?? 0, 'retryDelay');
@@ -45,7 +45,7 @@ export class Throttler extends Decorator {
    * @returns Promise<Address | null> - The address found or null
    */
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
-    const { normalized } = normalizeQueryWithOriginal(q);
+    const normalized = normalizeQuery(q);
     debug(
       'queueing search for: %s (queue size: %d, pending: %d)',
       normalized,

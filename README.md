@@ -1,9 +1,10 @@
 # GitTrends Geocoder
 
 `@gittrends-app/geocoder` is a Node.js library and CLI for turning free-form
-place names into structured addresses. The CLI and core default to OpenStreetMap
-Nominatim, Photon, and LocationIQ, with caching, fallback providers, and
-request queues.
+place names into structured administrative results. It targets city, state, and
+country-level places rather than street addresses or points of interest. The CLI
+and core default to OpenStreetMap Nominatim, Photon, and LocationIQ, with
+caching, fallback providers, and request queues.
 
 ## Important: Nominatim usage policy
 
@@ -23,8 +24,12 @@ gittrends-geocoder
 
 For regular or long-running bulk work, Nominatim's policy also requires a
 single-threaded, cached client and a maximum of **four requests per minute**.
-Use one worker and keep caching enabled. The CLI bulk command rejects more than
-one worker and paces public Nominatim work at four requests per minute.
+The library and CLI retain safe defaults: one request per second and one
+concurrent request for regular use, and four requests per minute for the CLI's
+public bulk profile. They do not reject explicit concurrency or rate overrides,
+and the CLI bulk command honors the requested worker count. Choosing overrides
+that comply with provider terms is the caller's responsibility; use one worker
+and keep caching enabled for public Nominatim bulk work.
 
 Do not use the public service for autocomplete or systematic harvesting,
 scraping place details, reselling geocoding data, or building a competing
@@ -75,11 +80,14 @@ secondary Keyv store options. The CLI's persistent cache is a file named
 data that may need an expiry or deletion policy.
 
 Results contain `source`, `name`, `type`, `confidence`, `provider`, and may
-contain coordinates, a bounding box, and administrative fields. `score` is
-the provider's score when available; it is **not a probability**. OSM uses
-Nominatim `importance` for `confidence` and `score`, LocationIQ uses
-`importance` or `rank_search`, and Photon reports `confidence: 0` without a
-score. `minConfidence` filters OSM and LocationIQ results.
+contain coordinates, a bounding box, and `city`, `state`, `country`, and
+`country_code` fields. `source` is the trimmed query with repeated whitespace
+collapsed. `name` trims, removes empty or repeated administrative components,
+and joins them with commas; `type` is the provider's administrative place type.
+`score` is the provider's score when available; it is **not a probability**. OSM
+and LocationIQ use provider `importance` for `confidence` and `score`, while
+Photon reports `confidence: 0` without a score. `minConfidence` filters OSM and
+LocationIQ results.
 
 LocationIQ is configured in library code with a required constructor
 `apiKey`; its options are `baseUrl`, `minConfidence`, `language`,
@@ -134,13 +142,17 @@ their order. The first provider is tried first and later providers are used
 for a null result or retryable provider failure. LocationIQ requires
 `--locationiq-key` (or the CLI environment variable `LOCATIONIQ_KEY` or
 `LOCATIONIQ_API_KEY`) when selected. There is no CLI option for a LocationIQ
-base URL.
+base URL. Photon uses its hosted Komoot endpoint; there is intentionally no CLI
+option for a Photon base URL.
 
 `--rate-profile` accepts `public`, `public-bulk`, or `self-hosted`. The CLI
 identifies the public Nominatim server from `OSM_SERVER`; server mode applies
 one request per second and bulk mode applies four requests per minute.
-`self-hosted` should only describe an instance you operate; a custom server
-still requires following that server's policy.
+These are safe defaults, not a public Nominatim concurrency/rate policy
+enforcement mechanism: explicit `--concurrency` choices are passed through, and
+following provider terms is the caller's responsibility. `self-hosted` should
+only describe an instance you operate; a custom server still requires following
+that server's policy.
 
 The CLI environment equivalents include `OSM_SERVER`, `OSM_EMAIL`,
 `OSM_USER_AGENT`, `PROVIDERS`, `RATE_PROFILE`, `PROVIDER_LANGUAGE`,
@@ -172,7 +184,10 @@ endpoint. Bulk options are `-i, --input <FILE>`, `--resume <FILE>`, `--workers <
 and `--continue`/`--continue-on-error`, plus the provider and cache options
 listed above. Server-only options such as `--rate-limit`, `--trust-proxy`,
 `--host`, and `--port` have no effect on `bulk`. Inputs are normalized and
-deduplicated; successful queries in `--resume` are skipped. Each output line
+deduplicated; successful queries in `--resume` are skipped. Bulk honors
+`--workers`, including values greater than one; for public Nominatim, worker and
+rate choices must follow provider terms and are the caller's responsibility.
+Each output line
 is a success record such as `{ "query": "Paris", "ok": true, "address": null }`
 (or an address object) or a failure record such as
 `{ "query": "Paris", "ok": false, "error": "Geocoding failed" }`.

@@ -1,9 +1,11 @@
 import Debug from 'debug';
 import { Address, AddressSchema, ConfidenceSchema } from '../entities/Address.js';
 import { ValidationError } from '../errors/index.js';
-import { formatDisplayName } from '../helpers/displayName.js';
+import { adminFields, adminLevel } from '../helpers/admin.js';
 import fetch from '../helpers/fetch.js';
-import { normalizeQueryWithOriginal } from '../helpers/query.js';
+import { finiteNumber, record } from '../helpers/provider.js';
+import { normalizeQuery } from '../helpers/query.js';
+import { queueOptions } from '../helpers/queue.js';
 import { Throttler, type ThrottlerOptions } from './decorators/Throttler.js';
 import { Geocoder } from './Geocoder.js';
 
@@ -36,7 +38,9 @@ type NominatimSearchResult = {
   lat?: string;
   lon?: string;
   display_name?: string;
+  name?: string;
   type?: string;
+  addresstype?: string;
   category?: string;
   importance?: number;
   boundingbox?: [string, string, string, string];
@@ -78,11 +82,12 @@ class BaseOpenStreetMap implements Geocoder {
   ) {}
 
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
-    const { normalized } = normalizeQueryWithOriginal(q);
+    const normalized = normalizeQuery(q);
     const params = new URLSearchParams({
       q: normalized,
       addressdetails: '1',
       'accept-language': this.options.language,
+      layer: 'address',
       limit: '5',
       format: 'jsonv2'
     });
@@ -94,60 +99,61 @@ class BaseOpenStreetMap implements Geocoder {
         headers: this.options.userAgent ? { 'User-Agent': this.options.userAgent } : undefined,
         signal: options?.signal,
         timeout: this.options.timeoutMs,
-        retry: { limit: 0 },
         provider: 'openstreetmap'
       }
     ).then((result) => result.json());
 
     if (!Array.isArray(response) || response.length === 0) return null;
 
-    const location = response.reduce<NominatimSearchResult | undefined>((best, current) => {
-      if (!current || typeof current !== 'object') return best;
-      const confidence = ConfidenceSchema.safeParse(current.importance);
-      if (!confidence.success || confidence.data < (this.options.minConfidence ?? 0)) return best;
+    for (const rawLocation of response) {
+      const location = record(rawLocation);
+      if (!location) continue;
+      const confidence = ConfidenceSchema.safeParse(location.importance ?? 0);
+      if (!confidence.success || confidence.data < (this.options.minConfidence ?? 0)) continue;
       // Keep this provider scoped to administrative place resolution: reject
       // POIs/streets (e.g. shops, buildings) and results missing address data.
-      if (!current.category || !['place', 'boundary'].includes(current.category)) return best;
-      if (!current.address || typeof current.address !== 'object') return best;
-      return !best || confidence.data > (best.importance ?? 0) ? current : best;
-    }, undefined);
-    if (!location) return null;
-
-    const address = location.address ?? {};
-    const confidence = ConfidenceSchema.safeParse(location.importance ?? 0);
-    const lat = Number(location.lat);
-    const lon = Number(location.lon);
-    const bbox = location.boundingbox?.map(Number);
-    const parsed = AddressSchema.safeParse({
-      provider: 'openstreetmap',
-      source: normalized,
-      name: formatDisplayName(
-        [address.country, address.state, address.city ?? address.town ?? address.village],
-        location.display_name ?? ''
-      ),
-      type: location.type ?? location.category,
-      confidence: confidence.success ? confidence.data : 0,
-      score: confidence.success ? confidence.data : undefined,
-      latitude: Number.isFinite(lat) ? lat : undefined,
-      longitude: Number.isFinite(lon) ? lon : undefined,
-      bbox: bbox?.length === 4 && bbox.every(Number.isFinite) ? bbox : undefined,
-      source_id:
-        location.osm_type && location.osm_id !== undefined
-          ? `${location.osm_type}/${location.osm_id}`
-          : location.place_id !== undefined
-            ? String(location.place_id)
-            : undefined,
-      provenance: 'openstreetmap',
-      country: address.country,
-      country_code: address.country_code,
-      state: address.state,
-      city: address.city ?? address.town ?? address.village
-    });
-    if (!parsed.success) {
-      debug('discarding malformed OpenStreetMap result for: %s', normalized);
-      return null;
+      const category = typeof location.category === 'string' ? location.category.toLowerCase() : '';
+      if (!['place', 'boundary'].includes(category)) continue;
+      const address = record(location.address);
+      if (!address) continue;
+      const level = adminLevel(location.addresstype, location.type);
+      if (!level) continue;
+      const featureName =
+        location.name ??
+        (level === 'country'
+          ? address.country
+          : level === 'state'
+            ? address.state
+            : level === 'city'
+              ? (address.city ?? address.town ?? address.village)
+              : address.county);
+      const fields = adminFields(level, featureName, address);
+      const bbox = Array.isArray(location.boundingbox)
+        ? location.boundingbox.map(finiteNumber)
+        : undefined;
+      const parsed = AddressSchema.safeParse({
+        provider: 'openstreetmap',
+        source: normalized,
+        ...fields,
+        type: level,
+        confidence: confidence.data,
+        score: confidence.data,
+        latitude: finiteNumber(location.lat),
+        longitude: finiteNumber(location.lon),
+        bbox: bbox?.length === 4 && bbox.every((value) => value !== undefined) ? bbox : undefined,
+        source_id:
+          typeof location.osm_type === 'string' &&
+          (typeof location.osm_id === 'number' || typeof location.osm_id === 'string')
+            ? `${location.osm_type}/${location.osm_id}`
+            : typeof location.place_id === 'number' || typeof location.place_id === 'string'
+              ? String(location.place_id)
+              : undefined,
+        provenance: 'openstreetmap'
+      });
+      if (parsed.success) return parsed.data;
     }
-    return parsed.data;
+    debug('discarding malformed OpenStreetMap result for: %s', normalized);
+    return null;
   }
 }
 
@@ -163,12 +169,7 @@ export class OpenStreetMap extends Throttler implements Geocoder {
         'public Nominatim requires a non-empty userAgent and email'
       );
     }
-    const queueOptions = options.rate
-      ? {
-          ...options.rate,
-          concurrency: options.rate.concurrency ?? options.concurrency ?? 1
-        }
-      : { concurrency: options.concurrency ?? 1, intervalCap: 1, interval: 1000, strict: true };
+    const rateOptions = queueOptions(options.rate, options.concurrency);
     super(
       new BaseOpenStreetMap({
         ...options,
@@ -178,7 +179,7 @@ export class OpenStreetMap extends Throttler implements Geocoder {
         language: options.language ?? 'en-US'
       }),
       {
-        ...queueOptions,
+        ...rateOptions,
         retries: options.retries ?? 2,
         retryDelay: 250
       }

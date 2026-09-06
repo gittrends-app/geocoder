@@ -9,7 +9,6 @@ import {
   parseLogLevel,
   parsePort,
   parseProviders,
-  parseRateLimitWindow,
   parseRateProfile,
   parseShutdownTimeout,
   validateCacheDirectory,
@@ -53,13 +52,13 @@ describe('CLI configuration validation', () => {
   it('validates bounded numeric settings and durations', () => {
     expect(parsePort(0)).toBe(0);
     expect(parseCacheSize('100')).toBe(100);
-    expect(parseRateLimitWindow('250ms')).toBe(250);
-    expect(parseRateLimitWindow('2 seconds')).toBe(2000);
+    expect(parseDuration('250ms')).toBe(250);
+    expect(parseDuration('2 seconds')).toBe(2000);
     expect(parseShutdownTimeout('5000')).toBe(5000);
     expect(() => parsePort(Number.NaN)).toThrow();
     expect(() => parsePort(-1)).toThrow();
     expect(() => parseCacheSize(Infinity)).toThrow();
-    expect(() => parseRateLimitWindow('0ms')).toThrow();
+    expect(() => parseDuration('0ms')).toThrow();
     expect(() => parseShutdownTimeout(121_000)).toThrow();
     expect(() => validateCacheDirectory('\u0000cache')).toThrow();
     expect(() => validateEmail('not-an-email')).toThrow();

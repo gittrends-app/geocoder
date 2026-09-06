@@ -2,15 +2,9 @@
  * Error hierarchy for geocoder package
  */
 export class GeocoderError extends Error {
-  constructor(
-    message: string,
-    public readonly cause?: Error
-  ) {
-    super(message);
+  constructor(message: string, cause?: Error) {
+    super(message, cause === undefined ? undefined : { cause });
     this.name = new.target.name;
-    if ((Error as any).captureStackTrace) {
-      (Error as any).captureStackTrace(this, new.target);
-    }
   }
 }
 
@@ -51,62 +45,6 @@ export class RateLimitError extends ProviderError {
       provider,
       status,
       'rate-limit',
-      retryAfter,
-      cause
-    );
-  }
-
-  get retryable(): true {
-    return true;
-  }
-}
-
-export class AuthenticationError extends ProviderError {
-  constructor(provider: string, status = 401, cause?: Error) {
-    super(
-      `Authentication failed for provider: ${provider}`,
-      provider,
-      status,
-      'authentication',
-      undefined,
-      cause
-    );
-  }
-}
-
-export class PolicyError extends ProviderError {
-  constructor(provider: string, status = 403, cause?: Error) {
-    super(
-      `Provider policy rejected the request: ${provider}`,
-      provider,
-      status,
-      'policy',
-      undefined,
-      cause
-    );
-  }
-}
-
-export class InvalidRequestError extends ProviderError {
-  constructor(provider: string, status = 400, cause?: Error) {
-    super(
-      `Invalid request for provider: ${provider}`,
-      provider,
-      status,
-      'invalid-request',
-      undefined,
-      cause
-    );
-  }
-}
-
-export class TransientError extends ProviderError {
-  constructor(provider: string, status?: number, cause?: Error, retryAfter?: number) {
-    super(
-      `Transient failure for provider: ${provider}`,
-      provider,
-      status,
-      'transient',
       retryAfter,
       cause
     );

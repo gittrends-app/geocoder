@@ -13,11 +13,13 @@ const address = (source: string): Address => ({
   name: 'A Place',
   type: 'city',
   confidence: 0,
+  country: 'France',
+  city: 'Paris',
   provider: 'photon'
 });
 
 const makeApp = (search: (query: string) => Promise<Address | null>) =>
-  createApp({ geocoder: { search }, helmet: { enabled: false } });
+  createApp({ geocoder: { search } });
 
 describe('HTTP application boundaries', () => {
   it('preserves address text and passes the canonical query to core', async () => {
@@ -36,12 +38,12 @@ describe('HTTP application boundaries', () => {
   });
 
   it.each([
-    ['/search?q=%20%20%20', 'non-empty'],
+    ['/search?q=%20%20%20', 'Invalid request'],
     [`/search?q=${'x'.repeat(501)}`, 'Invalid request'],
-    ['/search?q=valid%00query', 'control'],
-    ['/search?q=valid%09query', 'control'],
-    ['/search?q=valid%0Aquery', 'control'],
-    ['/search?q=valid%0Dquery', 'control'],
+    ['/search?q=valid%00query', 'Invalid request'],
+    ['/search?q=valid%09query', 'Invalid request'],
+    ['/search?q=valid%0Aquery', 'Invalid request'],
+    ['/search?q=valid%0Dquery', 'Invalid request'],
     ['/search?q=one&q=two', 'Invalid request'],
     ['/search?q=valid&unexpected=value', 'Invalid request']
   ])('rejects invalid search input: %s', async (url, expectedMessage) => {
@@ -107,18 +109,13 @@ describe('HTTP application boundaries', () => {
     });
     const app = createApp({
       geocoder: { search },
-      cache: { size: 10 },
-      helmet: { enabled: false }
+      cache: { size: 10 }
     });
 
     const health = await app.inject({ method: 'GET', url: '/health' });
-    const readiness = await app.inject({ method: 'GET', url: '/health/ready' });
-
     expect(health.statusCode).toBe(200);
     expect(health.json()).not.toHaveProperty('error');
     expect(health.json()).not.toHaveProperty('memory');
-    expect(readiness.statusCode).toBe(200);
-    expect(readiness.json()).toEqual({ ready: true });
     expect(search).not.toHaveBeenCalled();
     await app.close();
   });
@@ -127,12 +124,10 @@ describe('HTTP application boundaries', () => {
     const search = vi.fn(async () => address('test'));
     const app = createApp({
       geocoder: { search },
-      cache: { size: 10 },
-      helmet: { enabled: false }
+      cache: { size: 10 }
     });
 
     expect((await app.inject('/health')).statusCode).toBe(200);
-    expect((await app.inject('/health/ready')).statusCode).toBe(200);
     expect(search).not.toHaveBeenCalled();
     await app.close();
   });
@@ -141,12 +136,8 @@ describe('HTTP application boundaries', () => {
     const app = makeApp(async () => null);
 
     const health = await app.inject('/health');
-    const readiness = await app.inject('/health/ready');
-
     expect(health.statusCode).toBe(200);
     expect(health.json().status).toBe('healthy');
-    expect(readiness.statusCode).toBe(200);
-    expect(readiness.json()).toEqual({ ready: true });
     await app.close();
   });
 
@@ -164,8 +155,7 @@ describe('HTTP application boundaries', () => {
   it('does not log the query or raw request URL', async () => {
     const app = createApp({
       geocoder: { search: async () => address('secret query') },
-      logLevel: 'silent',
-      helmet: { enabled: false }
+      logLevel: 'silent'
     });
     const logInfoSpy = vi.spyOn(app.log, 'info');
 
@@ -183,8 +173,7 @@ describe('HTTP application boundaries', () => {
     const search = vi.fn(async () => searchResult);
     const app = createApp({
       geocoder: { search },
-      logLevel: 'silent',
-      helmet: { enabled: false }
+      logLevel: 'silent'
     });
 
     const logInfoSpy = vi.spyOn(app.log, 'info');
@@ -213,8 +202,7 @@ describe('HTTP application boundaries', () => {
     const search = vi.fn(async () => null);
     const app = createApp({
       geocoder: { search },
-      logLevel: 'silent',
-      helmet: { enabled: false }
+      logLevel: 'silent'
     });
 
     const logInfoSpy = vi.spyOn(app.log, 'info');
@@ -245,6 +233,7 @@ describe('HTTP application boundaries', () => {
     const geocoder = createGeocoder({
       providers: ['osm'],
       rateProfile: 'public-bulk',
+      concurrency: 2,
       email: 'ops@example.test',
       userAgent: 'test-agent/1.0'
     });
@@ -258,6 +247,7 @@ describe('HTTP application boundaries', () => {
     const changedServer = cacheIdentity({ ...base, osmServer: 'https://two.example.test' });
     const same = cacheIdentity({ ...base });
 
+    expect(cacheIdentity(base).schema).toBe('address-v2');
     expect(cacheIdentity(base)).toEqual(same);
     expect(cacheIdentity(base)).not.toEqual(changedLanguage);
     expect(cacheIdentity(base)).not.toEqual(changedServer);

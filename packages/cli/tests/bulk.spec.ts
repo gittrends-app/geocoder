@@ -13,6 +13,8 @@ describe('bulk CLI workflow', () => {
         name: query,
         type: 'city',
         confidence: 0,
+        country: 'France',
+        city: query,
         provider: 'photon'
       })
     );
@@ -20,7 +22,6 @@ describe('bulk CLI workflow', () => {
     const result = await runBulk({
       input: 'Paris\n paris \nBerlin\n',
       geocoder: { search },
-      rateProfile: 'self-hosted',
       write: (line: string) => output.push(line),
       progress: (line: string) => progress.push(line)
     });
@@ -42,7 +43,6 @@ describe('bulk CLI workflow', () => {
       input: 'done\nbad\nnew\n',
       resume: '{"query":"done","ok":true}\n',
       geocoder: { search },
-      rateProfile: 'self-hosted',
       continueOnError: true,
       write: (line: string) => output.push(line),
       progress: () => undefined
@@ -56,18 +56,35 @@ describe('bulk CLI workflow', () => {
     ]);
   });
 
-  it('requires the safe public Nominatim bulk policy', async () => {
-    await expect(
-      runBulk({
-        input: 'Paris\n',
-        geocoder: { search: async () => null },
-        providers: ['osm'],
-        rateProfile: 'public',
-        workers: 2,
-        write: () => undefined,
-        progress: () => undefined
-      })
-    ).rejects.toThrow('one worker');
+  it('allows multiple workers for public Nominatim bulk', async () => {
+    let active = 0;
+    let maximumActive = 0;
+    const search = vi.fn(async (query: string): Promise<Address> => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return {
+        source: query,
+        name: `${query}, France`,
+        type: 'city',
+        confidence: 0,
+        country: 'France',
+        city: query,
+        provider: 'openstreetmap'
+      };
+    });
+
+    const result = await runBulk({
+      input: 'Paris\nBerlin\n',
+      geocoder: { search },
+      workers: 2,
+      write: () => undefined,
+      progress: () => undefined
+    });
+
+    expect(result).toEqual({ processed: 2, succeeded: 2, failed: 0 });
+    expect(maximumActive).toBe(2);
   });
 
   it('uses Commander continueOnError and reports pending work in progress', async () => {
@@ -81,7 +98,6 @@ describe('bulk CLI workflow', () => {
       input: 'done\nbad\n',
       resume: '{"query":"done","ok":true}\n',
       geocoder: { search: async () => { throw new Error('failed'); } },
-      rateProfile: 'self-hosted',
       continueOnError: true,
       write: () => undefined,
       progress: (line) => progress.push(line)

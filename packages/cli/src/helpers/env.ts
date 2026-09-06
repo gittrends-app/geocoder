@@ -11,7 +11,6 @@ import {
   parseProviders,
   parseProviderTimeout,
   parseRateLimitMax,
-  parseRateLimitWindow,
   parseRateProfile,
   parseRetries,
   parseShutdownTimeout,
@@ -54,12 +53,6 @@ export const EnvSchema = z.object({
       .transform((value) => validateApiKey(value) as string)
       .optional()
   ),
-  LOCATIONIQ_API_KEY: optionalString(
-    z
-      .string()
-      .transform((value) => validateApiKey(value) as string)
-      .optional()
-  ),
   CACHE_POSITIVE_TTL_MS: z.preprocess(
     (value) => parseDuration(value ?? 3_600_000, 'CACHE_POSITIVE_TTL_MS'),
     z.number()
@@ -75,7 +68,7 @@ export const EnvSchema = z.object({
   RATE_LIMIT_MAX: z.preprocess((value) => parseRateLimitMax(value ?? 100), z.number()),
   RATE_LIMIT_WINDOW: z.preprocess((value) => {
     const window = value ?? '1 minute';
-    parseRateLimitWindow(window);
+    parseDuration(window, 'rateLimit.timeWindow');
     return window;
   }, z.string()),
   TRUST_PROXY: z.preprocess((value) => parseBoolean(value ?? false, 'TRUST_PROXY'), z.boolean())

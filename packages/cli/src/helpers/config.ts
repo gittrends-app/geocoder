@@ -199,44 +199,6 @@ export function parseRateLimitMax(value: unknown): number {
   return parseBoundedInteger(value, 'rateLimit.max', 1, MAX_RATE_LIMIT_ENTRIES);
 }
 
-export function parseRateLimitWindow(value: unknown): number {
-  if (typeof value !== 'string' || !value.trim()) {
-    invalid('rateLimit.timeWindow', value, 'must be a positive duration');
-  }
-
-  const match = value
-    .trim()
-    .toLowerCase()
-    .match(/^([0-9]+(?:\.[0-9]+)?)\s*(ms|s|m|h|milliseconds?|seconds?|minutes?|hours?)$/u);
-  if (!match) invalid('rateLimit.timeWindow', value, 'must be a positive duration');
-  const amount = Number(match[1]);
-  const units = match[2];
-  const multiplier =
-    {
-      ms: 1,
-      millisecond: 1,
-      milliseconds: 1,
-      s: 1_000,
-      second: 1_000,
-      seconds: 1_000,
-      m: 60_000,
-      minute: 60_000,
-      minutes: 60_000,
-      h: 3_600_000,
-      hour: 3_600_000,
-      hours: 3_600_000
-    }[units] ?? invalid('rateLimit.timeWindow', value, 'must be a positive duration');
-  const milliseconds = amount * multiplier;
-  if (
-    !Number.isFinite(milliseconds) ||
-    milliseconds <= 0 ||
-    milliseconds > MAX_RATE_LIMIT_WINDOW_MS
-  ) {
-    invalid('rateLimit.timeWindow', value, 'must be a positive duration of at most 24 hours');
-  }
-  return milliseconds;
-}
-
 export function validateCacheDirectory(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || !value.trim() || controlCharacters.test(value)) {

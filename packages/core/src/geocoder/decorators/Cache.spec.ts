@@ -11,7 +11,8 @@ describe('Cache decorator - deduplication and non-blocking writes', () => {
       source: 'San Francisco',
       name: 'San Francisco, CA, USA',
       type: 'city',
-      confidence: 0.9
+      confidence: 0.9,
+      country: 'United States'
     } as unknown as Address;
 
     // Delayed resolver to simulate in-flight request
@@ -195,7 +196,8 @@ describe('Cache decorator - deduplication and non-blocking writes', () => {
       source: 'Positive',
       name: 'Positive',
       type: 'city',
-      confidence: 0
+      confidence: 0,
+      country: 'France'
     } as Address;
     const positiveSearch = vi.fn().mockResolvedValue(address);
     const positiveCache = new Cache({ search: positiveSearch } as unknown as Geocoder, {
@@ -227,7 +229,8 @@ describe('Cache decorator - deduplication and non-blocking writes', () => {
       source: 'stale',
       name: 'Fresh',
       type: 'city',
-      confidence: 0
+      confidence: 0,
+      country: 'France'
     } as Address);
     const cache = new Cache({ search } as unknown as Geocoder);
     await (cache as any).cache.set('stale', { source: 'stale', name: 'invalid' });
@@ -237,8 +240,20 @@ describe('Cache decorator - deduplication and non-blocking writes', () => {
   });
 
   it('uses a distinct namespace for each effective provider configuration', async () => {
-    const first = { provider: 'photon', source: 'same', name: 'First', confidence: 0 } as Address;
-    const second = { provider: 'photon', source: 'same', name: 'Second', confidence: 0 } as Address;
+    const first = {
+      provider: 'photon',
+      source: 'same',
+      name: 'First',
+      confidence: 0,
+      country: 'France'
+    } as Address;
+    const second = {
+      provider: 'photon',
+      source: 'same',
+      name: 'Second',
+      confidence: 0,
+      country: 'France'
+    } as Address;
     const firstSearch = vi.fn().mockResolvedValue(first);
     const secondSearch = vi.fn().mockResolvedValue(second);
     const config = {

@@ -9,15 +9,13 @@ describe('Rate Limiting', () => {
   });
 
   it('should block requests after rate limit exceeded', async () => {
-    // Disable helmet in tests to avoid fastify-plugin version mismatch
     const mockGeocoder = {
       search: async (q: string) => null
     };
 
     const app = createApp({
       geocoder: mockGeocoder,
-      rateLimit: { max: 5, timeWindow: '1 minute' },
-      helmet: { enabled: false }
+      rateLimit: { max: 5, timeWindow: '1 minute' }
     });
     apps.push(app);
 
@@ -39,8 +37,7 @@ describe('Rate Limiting', () => {
   it('uses Fastify request identity instead of a spoofed forwarded header', async () => {
     const app = createApp({
       geocoder: { search: async () => null },
-      rateLimit: { max: 1, timeWindow: '1 minute' },
-      helmet: { enabled: false }
+      rateLimit: { max: 1, timeWindow: '1 minute' }
     });
     apps.push(app);
 
@@ -63,8 +60,7 @@ describe('Rate Limiting', () => {
     const app = createApp({
       geocoder: { search: async () => null },
       trustProxy: true,
-      rateLimit: { max: 1, timeWindow: '1 minute' },
-      helmet: { enabled: false }
+      rateLimit: { max: 1, timeWindow: '1 minute' }
     });
     apps.push(app);
 
@@ -81,26 +77,22 @@ describe('Rate Limiting', () => {
     expect(second.statusCode).toBe(404);
   });
 
-  it('exempts only liveness from an exhausted rate limit', async () => {
+  it('applies the rate limit to health checks', async () => {
     const app = createApp({
       geocoder: { search: async () => null },
-      rateLimit: { max: 1, timeWindow: '1 minute' },
-      helmet: { enabled: false }
+      rateLimit: { max: 1, timeWindow: '1 minute' }
     });
     apps.push(app);
 
     expect((await app.inject('/search?q=test')).statusCode).toBe(404);
     expect((await app.inject('/search?q=test')).statusCode).toBe(429);
-    expect((await app.inject('/health/live')).statusCode).toBe(200);
     expect((await app.inject('/health')).statusCode).toBe(429);
-    expect((await app.inject('/health/ready')).statusCode).toBe(429);
   });
 
   it('expires entries after the configured window', async () => {
     const app = createApp({
       geocoder: { search: async () => null },
-      rateLimit: { max: 1, timeWindow: '10ms' },
-      helmet: { enabled: false }
+      rateLimit: { max: 1, timeWindow: '10ms' }
     });
     apps.push(app);
 
@@ -110,41 +102,12 @@ describe('Rate Limiting', () => {
     expect((await app.inject('/search?q=test')).statusCode).toBe(404);
   });
 
-  it('evicts the oldest key when the bounded store is full', async () => {
-    const app = createApp({
-      geocoder: { search: async () => null },
-      rateLimit: { max: 1, maxKeys: 1, timeWindow: '1 minute' },
-      helmet: { enabled: false }
-    });
-    apps.push(app);
-
-    expect(
-      (await app.inject({ method: 'GET', url: '/search?q=test', remoteAddress: '10.0.0.1' }))
-        .statusCode
-    ).toBe(404);
-    await new Promise((resolve) => setTimeout(resolve, 2));
-    expect(
-      (await app.inject({ method: 'GET', url: '/search?q=test', remoteAddress: '10.0.0.2' }))
-        .statusCode
-    ).toBe(404);
-    expect(
-      (await app.inject({ method: 'GET', url: '/search?q=test', remoteAddress: '10.0.0.1' }))
-        .statusCode
-    ).toBe(404);
-  });
-
-  it('rejects invalid limiter settings and unsupported Redis configuration', () => {
+  it('rejects invalid limiter settings', () => {
     expect(() =>
       createApp({ geocoder: { search: async () => null }, rateLimit: { max: 0 } })
     ).toThrow();
     expect(() =>
       createApp({ geocoder: { search: async () => null }, rateLimit: { timeWindow: 'forever' } })
     ).toThrow();
-    expect(() =>
-      createApp({
-        geocoder: { search: async () => null },
-        rateLimit: { redis: 'redis://localhost' }
-      })
-    ).toThrow('Redis support');
   });
 });

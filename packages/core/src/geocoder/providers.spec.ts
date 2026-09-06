@@ -1,6 +1,6 @@
 import nock from 'nock';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RateLimitError, TransientError, ValidationError } from '../errors/index.js';
+import { RateLimitError, ValidationError } from '../errors/index.js';
 import { Fallback } from './decorators/Fallback.js';
 import { LocationIQ } from './LocationIQ.js';
 import { OpenStreetMap } from './OpenStreetMap.js';
@@ -34,6 +34,18 @@ describe('provider response and cancellation boundaries', () => {
     );
   });
 
+  it('accepts explicit public Nominatim concurrency and rate options', () => {
+    const identity = { userAgent: 'test', email: 'test@example.com' };
+    expect(
+      () =>
+        new OpenStreetMap({
+          ...identity,
+          concurrency: 3,
+          rate: { concurrency: 2, intervalCap: 2, interval: 1000 }
+        })
+    ).not.toThrow();
+  });
+
   it('keeps provider metadata and configured language', async () => {
     const baseUrl = 'https://osm-metadata.example.com';
     nock(baseUrl)
@@ -63,7 +75,7 @@ describe('provider response and cancellation boundaries', () => {
     });
 
     await expect(provider.search('Paris')).resolves.toMatchObject({
-      name: 'France, Paris',
+      name: 'Paris, France',
       latitude: 48.8566,
       longitude: 2.3522,
       bbox: [48.8, 48.9, 2.2, 2.4],
@@ -129,6 +141,55 @@ describe('provider response and cancellation boundaries', () => {
     await expect(provider.search('Somewhere')).resolves.toBeNull();
   });
 
+  it('accepts a boundary state from Nominatim addresstype and keeps missing importance at zero', async () => {
+    const baseUrl = 'https://osm-state.example.com';
+    nock(baseUrl)
+      .get('/search')
+      .query((query) => query.layer === 'address')
+      .reply(200, [
+        {
+          category: 'boundary',
+          type: 'administrative',
+          addresstype: 'state',
+          name: 'Texas',
+          address: { country: 'United States', country_code: 'us' }
+        }
+      ]);
+    const provider = new OpenStreetMap({ osmServer: baseUrl });
+
+    await expect(provider.search('Texas')).resolves.toMatchObject({
+      name: 'Texas, United States',
+      type: 'state',
+      state: 'Texas',
+      confidence: 0
+    });
+  });
+
+  it('classifies a Nominatim state district as county', async () => {
+    const baseUrl = 'https://osm-county.example.com';
+    nock(baseUrl)
+      .get('/search')
+      .query(true)
+      .reply(200, [
+        {
+          category: 'boundary',
+          type: 'administrative',
+          addresstype: 'state_district',
+          name: 'Travis District',
+          address: { country: 'United States', state_district: 'Travis District' }
+        }
+      ]);
+    const provider = new OpenStreetMap({ osmServer: baseUrl });
+
+    const result = await provider.search('Travis District');
+    expect(result).toMatchObject({
+      name: 'United States',
+      type: 'county'
+    });
+    expect(result).not.toHaveProperty('state');
+    expect(result).not.toHaveProperty('city');
+  });
+
   it('Photon fails closed when feature properties are malformed', async () => {
     nock('https://photon.komoot.io')
       .get('/api/')
@@ -139,10 +200,56 @@ describe('provider response and cancellation boundaries', () => {
     await expect(provider.search('Somewhere')).resolves.toBeNull();
   });
 
+  it('Photon skips a non-administrative feature and backfills a state feature', async () => {
+    const baseUrl = 'https://photon-state.example.com/api';
+    nock(baseUrl)
+      .get('/')
+      .query(true)
+      .reply(200, {
+        features: [
+          { properties: { type: 'district', name: 'Downtown', country: 'United States' } },
+          { properties: { type: 'state', name: 'Texas', country: 'United States' } }
+        ]
+      });
+    const provider = new Photon({ baseUrl });
+
+    await expect(provider.search('Texas')).resolves.toMatchObject({
+      name: 'Texas, United States',
+      type: 'state',
+      state: 'Texas'
+    });
+  });
+
+  it('Photon skips malformed coordinates before accepting a later feature', async () => {
+    const baseUrl = 'https://photon-coordinates.example.com/api';
+    nock(baseUrl)
+      .get('/')
+      .query(true)
+      .reply(200, {
+        features: [
+          {
+            properties: { type: 'city', name: 'Bad City', country: 'France' },
+            geometry: { coordinates: ['bad', 2] }
+          },
+          {
+            properties: { type: 'city', name: 'Paris', country: 'France' },
+            geometry: { coordinates: [2.35, 48.86] }
+          }
+        ]
+      });
+    const provider = new Photon({ baseUrl });
+
+    await expect(provider.search('Paris')).resolves.toMatchObject({
+      name: 'Paris, France',
+      latitude: 48.86,
+      longitude: 2.35
+    });
+  });
+
   it('LocationIQ fails closed for malformed confidence data', async () => {
     const baseUrl = 'https://locationiq.example.com/v1';
     nock(baseUrl)
-      .get('/search.php')
+      .get('/search')
       .query(true)
       .reply(200, [
         {
@@ -154,6 +261,55 @@ describe('provider response and cancellation boundaries', () => {
     const provider = new LocationIQ({ apiKey: 'test-key', baseUrl, concurrency: 1 });
 
     await expect(provider.search('Somewhere')).resolves.toBeNull();
+  });
+
+  it('LocationIQ skips a non-administrative result and accepts a later city', async () => {
+    const baseUrl = 'https://locationiq-admin.example.com/v1';
+    nock(baseUrl)
+      .get('/search')
+      .query(true)
+      .reply(200, [
+        { class: 'highway', type: 'residential', display_name: 'Street' },
+        {
+          class: 'place',
+          type: 'city',
+          name: 'Paris',
+          importance: 0.4,
+          address: { country: 'France', country_code: 'fr' }
+        }
+      ]);
+    const provider = new LocationIQ({ apiKey: 'test-key', baseUrl });
+
+    await expect(provider.search('Paris')).resolves.toMatchObject({
+      name: 'Paris, France',
+      type: 'city',
+      city: 'Paris',
+      score: 0.4
+    });
+  });
+
+  it('LocationIQ accepts administrative boundaries without promoting counties', async () => {
+    const baseUrl = 'https://locationiq-boundary.example.com/v1';
+    nock(baseUrl)
+      .get('/search')
+      .query(true)
+      .reply(200, [
+        {
+          class: 'boundary',
+          type: 'administrative',
+          name: 'Travis District',
+          importance: 0.5,
+          address: { country: 'United States', state_district: 'Travis District' }
+        }
+      ]);
+    const provider = new LocationIQ({ apiKey: 'test-key', baseUrl });
+
+    const result = await provider.search('Travis District');
+    expect(result).toMatchObject({
+      name: 'United States',
+      type: 'county'
+    });
+    expect(result).not.toHaveProperty('state');
   });
 
   it('propagates cancellation to an in-flight OSM request', async () => {
@@ -214,7 +370,7 @@ describe('provider response and cancellation boundaries', () => {
       requestStarted = resolve;
     });
     const scope = nock(baseUrl)
-      .get('/search.php')
+      .get('/search')
       .query(true)
       .delayBody(200)
       .reply(() => {
@@ -247,6 +403,8 @@ describe('provider response and cancellation boundaries', () => {
     nock(osm).get('/search').query(true).delay(100).reply(200, []);
     const provider = new OpenStreetMap({ osmServer: osm, timeoutMs: 10, retries: 0 });
 
-    await expect(provider.search('Somewhere')).rejects.toBeInstanceOf(TransientError);
+    await expect(provider.search('Somewhere')).rejects.toMatchObject({
+      kind: 'transient'
+    });
   });
 });
