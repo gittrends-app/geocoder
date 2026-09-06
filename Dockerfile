@@ -7,7 +7,8 @@ COPY packages/cli/package.json ./packages/cli/
 
 # Stage 2: Dependencies
 FROM base AS deps
-RUN yarn install --production --frozen-lockfile --ignore-scripts
+RUN yarn install --production --frozen-lockfile \
+  && node -e "require('sqlite3')"
 
 # Stage 3: Build
 FROM base AS build
