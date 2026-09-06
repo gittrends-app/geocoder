@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { ValidationError } from '../errors/index.js';
-import { MAX_QUERY_LENGTH, normalizeQuery, normalizeQueryWithOriginal } from './query.js';
+import {
+  MAX_QUERY_LENGTH,
+  normalizeQuery,
+  normalizeQueryKey,
+  normalizeQueryWithOriginal
+} from './query.js';
 
 describe('query normalization', () => {
   it('trims and collapses whitespace while retaining the trimmed input', () => {
@@ -21,5 +26,12 @@ describe('query normalization', () => {
 
   it('rejects non-string input at runtime', () => {
     expect(() => normalizeQuery(null)).toThrow(ValidationError);
+  });
+
+  it('folds case and NFC-equivalent text only for cache keys', () => {
+    expect(normalizeQuery('  Café\tRue ')).toBe('Café Rue');
+    expect(normalizeQueryKey('  CAFÉ\tRUE ')).toBe(normalizeQueryKey('cafe\u0301 rue'));
+    expect(normalizeQueryKey('Straße')).not.toBe(normalizeQueryKey('Strasse'));
+    expect(normalizeQueryKey('a-b')).not.toBe(normalizeQueryKey('ab'));
   });
 });

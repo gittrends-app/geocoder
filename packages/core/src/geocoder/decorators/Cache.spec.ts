@@ -52,7 +52,7 @@ describe('Cache decorator - deduplication and non-blocking writes', () => {
     expect(await cache.search('  No   Such   Place ')).toBeNull();
     // Cache writes are intentionally non-blocking.
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(await cache.search('No Such Place')).toBeNull();
+    expect(await cache.search('NO SUCH PLACE')).toBeNull();
     expect(mockSearch).toHaveBeenCalledTimes(1);
   });
 
@@ -65,6 +65,89 @@ describe('Cache decorator - deduplication and non-blocking writes', () => {
 
     expect(result?.source).toBe('Same Query');
     expect(mockSearch).toHaveBeenCalledWith('Same Query', expect.anything());
+  });
+
+  it('shares case- and NFC-equivalent positive requests without changing provider input', async () => {
+    const mockSearch = vi.fn(
+      (query: string) =>
+        new Promise<Address>((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                provider: 'photon',
+                source: query,
+                name: query,
+                type: 'city',
+                confidence: 0,
+                country: 'France'
+              } as Address),
+            20
+          )
+        )
+    );
+    const cache = new Cache({ search: mockSearch } as unknown as Geocoder, { ttl: 60 });
+
+    const [first, variant] = await Promise.all([
+      cache.search('  CAFÉ\tRue '),
+      cache.search('cafe\u0301 rue')
+    ]);
+
+    expect(mockSearch).toHaveBeenCalledOnce();
+    expect(mockSearch).toHaveBeenCalledWith('CAFÉ Rue', expect.anything());
+    expect(first?.source).toBe('CAFÉ Rue');
+    expect(variant?.source).toBe('cafe\u0301 rue');
+    expect(variant).not.toBe(first);
+  });
+
+  it('returns a variant-specific source for positive cache hits without mutation', async () => {
+    const address = {
+      provider: 'photon',
+      source: 'Paris',
+      name: 'Paris, France',
+      type: 'city',
+      confidence: 0,
+      country: 'France'
+    } as Address;
+    const search = vi.fn().mockResolvedValue(address);
+    const cache = new Cache({ search } as unknown as Geocoder, { ttl: 60 });
+
+    await expect(cache.search('Paris')).resolves.toBe(address);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const variant = await cache.search('PARIS');
+
+    expect(variant).toEqual({ ...address, source: 'PARIS' });
+    expect(variant).not.toBe(address);
+    expect(address.source).toBe('Paris');
+    expect(search).toHaveBeenCalledOnce();
+  });
+
+  it('does not collide punctuation or sharp-s with ss in cache keys', async () => {
+    const mockSearch = vi.fn(
+      async (query: string) =>
+        ({
+          provider: 'photon',
+          source: query,
+          name: query,
+          type: 'city',
+          confidence: 0,
+          country: 'France'
+        }) as Address
+    );
+    const cache = new Cache({ search: mockSearch } as unknown as Geocoder, { ttl: 60 });
+
+    await cache.search('Straße');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await cache.search('Strasse');
+    await cache.search('A-B');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await cache.search('AB');
+
+    expect(mockSearch.mock.calls.map(([query]) => query)).toEqual([
+      'Straße',
+      'Strasse',
+      'A-B',
+      'AB'
+    ]);
   });
 
   it('should abort while waiting for cache lookup and clean up its listener', async () => {
@@ -236,6 +319,22 @@ describe('Cache decorator - deduplication and non-blocking writes', () => {
     await (cache as any).cache.set('stale', { source: 'stale', name: 'invalid' });
 
     await expect(cache.search('stale')).resolves.toMatchObject({ name: 'Fresh' });
+    expect(search).toHaveBeenCalledOnce();
+  });
+
+  it('invalidates malformed values using the folded cache key', async () => {
+    const search = vi.fn().mockResolvedValue({
+      provider: 'photon',
+      source: 'CAFÉ',
+      name: 'Café, France',
+      type: 'city',
+      confidence: 0,
+      country: 'France'
+    } as Address);
+    const cache = new Cache({ search } as unknown as Geocoder);
+    await (cache as any).cache.set('café', { source: 'invalid' });
+
+    await expect(cache.search('CAFÉ')).resolves.toMatchObject({ source: 'CAFÉ' });
     expect(search).toHaveBeenCalledOnce();
   });
 

@@ -1,4 +1,4 @@
-import { Geocoder, normalizeQuery } from '@/core';
+import { Geocoder, normalizeQueryKey } from '@/core';
 import { parseConcurrency } from './helpers/config.js';
 
 export interface BulkOptions {
@@ -95,8 +95,8 @@ export async function runBulk(options: BulkOptions): Promise<BulkResult> {
 
 function key(query: string): string {
   try {
-    return normalizeQuery(query).toLocaleLowerCase();
+    return normalizeQueryKey(query);
   } catch {
-    return query.trim().toLocaleLowerCase();
+    return query.trim().normalize('NFC').toLowerCase();
   }
 }

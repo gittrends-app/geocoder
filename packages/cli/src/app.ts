@@ -172,7 +172,7 @@ export function createConfiguredGeocoder(
 
 export function cacheIdentity(config: ProviderConfig): Record<string, unknown> {
   return {
-    schema: 'address-v2',
+    schema: 'address-v3',
     providers: config.providers ?? ['osm', 'photon'],
     osmServer: normalizeOsmServerUrl(config.osmServer ?? DEFAULT_OSM_SERVER),
     language: config.language ?? 'en'

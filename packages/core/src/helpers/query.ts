@@ -4,7 +4,7 @@ import { ValidationError } from '../errors/index.js';
 export const MAX_QUERY_LENGTH = 500;
 
 export type NormalizedQuery = {
-  /** The canonical query used for requests, Address.source, and cache keys. */
+  /** The canonical query used for provider requests and Address.source. */
   normalized: string;
   /** The caller's query with outer whitespace removed, for callers that need it. */
   original: string;
@@ -39,4 +39,9 @@ export function normalizeQueryWithOriginal(query: unknown): NormalizedQuery {
 /** Normalize and validate a query, returning its canonical form. */
 export function normalizeQuery(query: unknown): string {
   return normalizeQueryWithOriginal(query).normalized;
+}
+
+/** Normalize a query for case- and Unicode-equivalent cache/deduplication. */
+export function normalizeQueryKey(query: unknown): string {
+  return normalizeQuery(query).normalize('NFC').toLowerCase();
 }

@@ -40,7 +40,7 @@ describe('bulk CLI workflow', () => {
     });
 
     const result = await runBulk({
-      input: 'done\nbad\nnew\n',
+      input: 'DONE\nbad\nnew\n',
       resume: '{"query":"done","ok":true}\n',
       geocoder: { search },
       continueOnError: true,

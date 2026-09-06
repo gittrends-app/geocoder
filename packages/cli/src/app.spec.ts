@@ -258,7 +258,7 @@ describe('HTTP application boundaries', () => {
     const changedServer = cacheIdentity({ ...base, osmServer: 'https://two.example.test' });
     const same = cacheIdentity({ ...base });
 
-    expect(cacheIdentity(base).schema).toBe('address-v2');
+    expect(cacheIdentity(base).schema).toBe('address-v3');
     expect(cacheIdentity(base)).toEqual(same);
     expect(cacheIdentity(base)).not.toEqual(changedLanguage);
     expect(cacheIdentity(base)).not.toEqual(changedServer);

@@ -7,7 +7,7 @@ import Keyv, { KeyvOptions } from 'keyv';
 import QuickLRU from 'quick-lru';
 import { Address, AddressSchema } from '../../entities/Address.js';
 import { RequestAbortedError } from '../../errors/index.js';
-import { normalizeQueryWithOriginal } from '../../helpers/query.js';
+import { normalizeQueryKey, normalizeQueryWithOriginal } from '../../helpers/query.js';
 import { Geocoder } from '../Geocoder.js';
 
 const debug = Debug('geocoder:cache');
@@ -90,6 +90,7 @@ export class Cache implements Geocoder {
    */
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
     const { normalized, original } = normalizeQueryWithOriginal(q);
+    const cacheKey = normalizeQueryKey(normalized);
 
     // Respect abort signal early
     if (options?.signal?.aborted) {
@@ -99,7 +100,7 @@ export class Cache implements Geocoder {
 
     // Check cache explicitly for undefined so that false (negative cache) is respected
     const cached = await this.getCached<Address | false | undefined>(
-      normalized,
+      cacheKey,
       normalized,
       options?.signal
     );
@@ -108,13 +109,15 @@ export class Cache implements Geocoder {
       debug('cache hit for: %s', normalized);
       // cached may be `false` sentinel which represents "not found"
       if (cached === false) return null;
-      if (AddressSchema.safeParse(cached).success) return cached;
-      await this.cache.del(normalized);
+      if (AddressSchema.safeParse(cached).success) {
+        return cached.source === normalized ? cached : { ...cached, source: normalized };
+      }
+      await this.cache.del(cacheKey);
     }
 
-    // If a request for the same canonical query is in flight, join it. Each
+    // If a request for the same folded query is in flight, join it. Each
     // caller still gets an independent abortable view of the shared request.
-    const existing = this.pending.get(normalized);
+    const existing = this.pending.get(cacheKey);
     if (existing) {
       debug('deduplicating concurrent request for: %s', normalized);
       return this.join(existing, normalized, options?.signal);
@@ -125,6 +128,7 @@ export class Cache implements Geocoder {
       controller,
       callers: 0,
       settled: false,
+      query: normalized,
       promise: Promise.resolve()
         .then(() => this.geocoder.search(normalized, { signal: controller.signal }))
         .then((address) => {
@@ -133,7 +137,7 @@ export class Cache implements Geocoder {
             // Fire-and-forget cache write: do not block the response on cache set
             this.cache
               .set(
-                normalized,
+                cacheKey,
                 address || false,
                 address ? this.positiveTtl || undefined : this.negativeTtl || undefined
               )
@@ -149,12 +153,12 @@ export class Cache implements Geocoder {
         .finally(() => {
           pending.settled = true;
           // Ensure pending map is cleaned up regardless of outcome to avoid leaks
-          if (this.pending.get(normalized) === pending) this.pending.delete(normalized);
+          if (this.pending.get(cacheKey) === pending) this.pending.delete(cacheKey);
         })
     };
 
     // A request with no caller signal is still a regular shared request.
-    this.pending.set(normalized, pending);
+    this.pending.set(cacheKey, pending);
     pending.promise.catch(() => undefined);
     return this.join(pending, normalized, options?.signal);
   }
@@ -209,7 +213,8 @@ export class Cache implements Geocoder {
           if (signal) signal.removeEventListener('abort', onAbort);
           release();
           if (signal?.aborted) reject(new RequestAbortedError(query));
-          else resolve(address);
+          else
+            resolve(address && (query === pending.query ? address : { ...address, source: query }));
         },
         (error: unknown) => {
           if (signal) signal.removeEventListener('abort', onAbort);
@@ -261,5 +266,6 @@ type PendingRequest = {
   controller: AbortController;
   callers: number;
   settled: boolean;
+  query: string;
   promise: Promise<Address | null>;
 };
