@@ -2,13 +2,23 @@ import z from 'zod';
 import {
   DEFAULT_OSM_SERVER,
   normalizeOsmServerUrl,
+  parseBoolean,
   parseCacheSize,
   parseConcurrency,
+  parseDuration,
   parseLogLevel,
   parsePort,
+  parseProviders,
+  parseProviderTimeout,
+  parseRateLimitMax,
+  parseRateLimitWindow,
+  parseRateProfile,
+  parseRetries,
   parseShutdownTimeout,
+  validateApiKey,
   validateCacheDirectory,
   validateHost,
+  validateLanguage,
   validateUserAgent
 } from './config.js';
 
@@ -32,11 +42,45 @@ export const EnvSchema = z.object({
   GRACEFUL_SHUTDOWN_TIMEOUT_MS: z.preprocess(
     (value) => parseShutdownTimeout(value ?? 30_000),
     z.number()
-  )
+  ),
+  PROVIDERS: z.preprocess((value) => parseProviders(value ?? 'osm,photon'), z.array(z.string())),
+  RATE_PROFILE: z.preprocess((value) => parseRateProfile(value ?? 'public'), z.string()),
+  PROVIDER_LANGUAGE: z.preprocess((value) => validateLanguage(value ?? 'en'), z.string()),
+  PROVIDER_TIMEOUT_MS: z.preprocess((value) => parseProviderTimeout(value ?? 5000), z.number()),
+  PROVIDER_RETRIES: z.preprocess((value) => parseRetries(value ?? 2), z.number()),
+  LOCATIONIQ_KEY: optionalString(
+    z
+      .string()
+      .transform((value) => validateApiKey(value) as string)
+      .optional()
+  ),
+  LOCATIONIQ_API_KEY: optionalString(
+    z
+      .string()
+      .transform((value) => validateApiKey(value) as string)
+      .optional()
+  ),
+  CACHE_POSITIVE_TTL_MS: z.preprocess(
+    (value) => parseDuration(value ?? 3_600_000, 'CACHE_POSITIVE_TTL_MS'),
+    z.number()
+  ),
+  CACHE_NEGATIVE_TTL_MS: z.preprocess(
+    (value) => parseDuration(value ?? 300_000, 'CACHE_NEGATIVE_TTL_MS'),
+    z.number()
+  ),
+  RATE_LIMIT_ENABLED: z.preprocess(
+    (value) => parseBoolean(value ?? false, 'RATE_LIMIT_ENABLED'),
+    z.boolean()
+  ),
+  RATE_LIMIT_MAX: z.preprocess((value) => parseRateLimitMax(value ?? 100), z.number()),
+  RATE_LIMIT_WINDOW: z.preprocess((value) => {
+    const window = value ?? '1 minute';
+    parseRateLimitWindow(window);
+    return window;
+  }, z.string()),
+  TRUST_PROXY: z.preprocess((value) => parseBoolean(value ?? false, 'TRUST_PROXY'), z.boolean())
 });
 
 export function parseEnv(input: NodeJS.ProcessEnv = process.env) {
   return EnvSchema.parse(input);
 }
-
-export const env = parseEnv();

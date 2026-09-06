@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  type Address,
   GeocoderError,
+  RateLimitError,
   RequestAbortedError,
-  ValidationError,
-  type Address
+  ValidationError
 } from '../../core/src/index.js';
-import { createApp } from '../src/app.js';
+import { cacheIdentity, createApp, createGeocoder } from '../src/app.js';
 
 const address = (source: string): Address => ({
   source,
@@ -59,7 +60,10 @@ describe('HTTP application boundaries', () => {
     const search = vi.fn(async (query: string) => address(query));
     const app = makeApp(search);
 
-    const response = await app.inject({ method: 'GET', url: '/search?q=https%3A%2F%2Fexample.test%2Fa%3Fb' });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/search?q=https%3A%2F%2Fexample.test%2Fa%3Fb'
+    });
 
     expect(response.statusCode).toBe(200);
     expect(search).toHaveBeenCalledWith('https://example.test/a?b', expect.anything());
@@ -84,7 +88,20 @@ describe('HTTP application boundaries', () => {
     await app.close();
   });
 
-  it('redacts health failures and bypasses the cache for readiness checks', async () => {
+  it('propagates provider rate limits with Retry-After', async () => {
+    const app = makeApp(async () => {
+      throw new RateLimitError('openstreetmap', 12);
+    });
+
+    const response = await app.inject('/search?q=valid');
+
+    expect(response.statusCode).toBe(429);
+    expect(response.headers['retry-after']).toBe('12');
+    expect(response.json()).toEqual({ message: 'Geocoding service rate limited' });
+    await app.close();
+  });
+
+  it('keeps health and readiness local without calling providers', async () => {
     const search = vi.fn(async () => {
       throw new Error('provider secret');
     });
@@ -97,16 +114,16 @@ describe('HTTP application boundaries', () => {
     const health = await app.inject({ method: 'GET', url: '/health' });
     const readiness = await app.inject({ method: 'GET', url: '/health/ready' });
 
-    expect(health.statusCode).toBe(503);
+    expect(health.statusCode).toBe(200);
     expect(health.json()).not.toHaveProperty('error');
     expect(health.json()).not.toHaveProperty('memory');
-    expect(readiness.statusCode).toBe(503);
-    expect(readiness.json()).toEqual({ ready: false });
-    expect(search).toHaveBeenCalledTimes(2);
+    expect(readiness.statusCode).toBe(200);
+    expect(readiness.json()).toEqual({ ready: true });
+    expect(search).not.toHaveBeenCalled();
     await app.close();
   });
 
-  it('uses the uncached geocoder for successful readiness checks', async () => {
+  it('does not consume a cache or provider request for health checks', async () => {
     const search = vi.fn(async () => address('test'));
     const app = createApp({
       geocoder: { search },
@@ -116,20 +133,48 @@ describe('HTTP application boundaries', () => {
 
     expect((await app.inject('/health')).statusCode).toBe(200);
     expect((await app.inject('/health/ready')).statusCode).toBe(200);
-    expect(search).toHaveBeenCalledTimes(2);
+    expect(search).not.toHaveBeenCalled();
     await app.close();
   });
 
-  it('reports a null health probe as degraded and unready', async () => {
+  it('reports local health status without depending on provider results', async () => {
     const app = makeApp(async () => null);
 
     const health = await app.inject('/health');
     const readiness = await app.inject('/health/ready');
 
-    expect(health.statusCode).toBe(503);
-    expect(health.json().status).toBe('degraded');
-    expect(readiness.statusCode).toBe(503);
-    expect(readiness.json()).toEqual({ ready: false });
+    expect(health.statusCode).toBe(200);
+    expect(health.json().status).toBe('healthy');
+    expect(readiness.statusCode).toBe(200);
+    expect(readiness.json()).toEqual({ ready: true });
+    await app.close();
+  });
+
+  it('adds provider metadata without changing the address response', async () => {
+    const app = makeApp(async (query) => address(query));
+    const response = await app.inject('/search?q=private%20query');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['x-geocoder-provider']).toBe('photon');
+    expect(response.headers['x-geocoder-attribution']).toContain('Photon');
+    expect(response.json()).toMatchObject({ source: 'private query', provider: 'photon' });
+    await app.close();
+  });
+
+  it('does not log the query or raw request URL', async () => {
+    const app = createApp({
+      geocoder: { search: async () => address('secret query') },
+      logLevel: 'silent',
+      helmet: { enabled: false }
+    });
+    const logInfoSpy = vi.spyOn(app.log, 'info');
+
+    await app.inject('/search?q=secret%20query&key=secret-api-key');
+
+    const fields = JSON.stringify(logInfoSpy.mock.calls);
+    expect(fields).not.toContain('secret query');
+    expect(fields).not.toContain('secret-api-key');
+    expect(fields).not.toContain('/search?q=');
     await app.close();
   });
 
@@ -152,15 +197,15 @@ describe('HTTP application boundaries', () => {
     expect(response.statusCode).toBe(200);
     expect(logInfoSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: 'São Paulo',
+        queryLength: 'São Paulo'.length,
         result: 'resolved',
         resolved: true,
         provider: 'photon',
-        name: 'A Place',
         confidence: 0
       }),
       'geocoding completed'
     );
+    expect(logInfoSpy.mock.calls[0]?.[0]).not.toHaveProperty('name');
     await app.close();
   });
 
@@ -182,7 +227,7 @@ describe('HTTP application boundaries', () => {
     expect(response.statusCode).toBe(404);
     expect(logInfoSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        query: 'nonexistent123',
+        queryLength: 'nonexistent123'.length,
         result: 'not_found',
         resolved: false
       }),
@@ -194,5 +239,27 @@ describe('HTTP application boundaries', () => {
     expect(callArg).not.toHaveProperty('name');
     expect(callArg).not.toHaveProperty('confidence');
     await app.close();
+  });
+
+  it('builds a public-bulk geocoder for the public Nominatim server without error', () => {
+    const geocoder = createGeocoder({
+      providers: ['osm'],
+      rateProfile: 'public-bulk',
+      email: 'ops@example.test',
+      userAgent: 'test-agent/1.0'
+    });
+
+    expect(typeof geocoder.search).toBe('function');
+  });
+
+  it('derives a distinct cache identity when effective provider config changes', () => {
+    const base = { providers: ['osm'], osmServer: 'https://one.example.test', language: 'en' };
+    const changedLanguage = cacheIdentity({ ...base, language: 'fr' });
+    const changedServer = cacheIdentity({ ...base, osmServer: 'https://two.example.test' });
+    const same = cacheIdentity({ ...base });
+
+    expect(cacheIdentity(base)).toEqual(same);
+    expect(cacheIdentity(base)).not.toEqual(changedLanguage);
+    expect(cacheIdentity(base)).not.toEqual(changedServer);
   });
 });

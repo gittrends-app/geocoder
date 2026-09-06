@@ -1,5 +1,6 @@
 import nock from 'nock';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { RateLimitError, TransientError } from '../errors/index.js';
 import fetch from './fetch.js';
 
 /**
@@ -85,7 +86,7 @@ describe('fetch helper', () => {
       expect(scope.isDone()).toBe(true);
     });
 
-    it('should not retry a timeout even when retries are available', async () => {
+    it('classifies a provider timeout as retryable transient failure', async () => {
       let attempts = 0;
       const scope = nock('https://timeout-api.example.com')
         .get('/timeout')
@@ -97,7 +98,7 @@ describe('fetch helper', () => {
 
       await expect(
         fetch('https://timeout-api.example.com/timeout', { timeout: 25 })
-      ).rejects.toThrow();
+      ).rejects.toBeInstanceOf(TransientError);
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(attempts).toBe(1);
@@ -154,130 +155,78 @@ describe('fetch helper', () => {
   });
 
   describe('retry functionality', () => {
-    it('should retry on 500 server errors', async () => {
-      const scope = nock('https://api.example.com')
-        .get('/data')
-        .reply(500, 'Server Error')
-        .get('/data')
-        .reply(200, { success: true });
-
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
-
-      expect(response.status).toBe(200);
-      expect(scope.isDone()).toBe(true);
-    }, 5000);
-
-    it('should retry on 502 bad gateway', async () => {
-      const scope = nock('https://api.example.com')
-        .get('/data')
-        .reply(502, 'Bad Gateway')
-        .get('/data')
-        .reply(200, { success: true });
-
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
-
-      expect(response.status).toBe(200);
-      expect(scope.isDone()).toBe(true);
+    it('should throw TransientError on 500 server errors', async () => {
+      nock('https://api.example.com').get('/data').reply(500, 'Server Error');
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
+        /transient|500/i
+      );
     });
 
-    it('should retry on 503 service unavailable', async () => {
-      const scope = nock('https://api.example.com')
-        .get('/data')
-        .reply(503, 'Service Unavailable')
-        .get('/data')
-        .reply(200, { success: true });
-
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
-
-      expect(response.status).toBe(200);
-      expect(scope.isDone()).toBe(true);
+    it('should throw TransientError on 502 bad gateway', async () => {
+      nock('https://api.example.com').get('/data').reply(502, 'Bad Gateway');
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
+        /transient|502/i
+      );
     });
 
-    it('should retry on 403 forbidden', async () => {
-      const scope = nock('https://api.example.com')
-        .get('/data')
-        .reply(403, 'Forbidden')
-        .get('/data')
-        .reply(200, { success: true });
-
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
-
-      expect(response.status).toBe(200);
-      expect(scope.isDone()).toBe(true);
+    it('should throw TransientError on 503 service unavailable', async () => {
+      nock('https://api.example.com').get('/data').reply(503, 'Service Unavailable');
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
+        /transient|503/i
+      );
     });
 
-    it('should retry on 429 rate limit', async () => {
-      const scope = nock('https://api.example.com')
-        .get('/data')
-        .reply(429, 'Too Many Requests')
-        .get('/data')
-        .reply(200, { success: true });
-
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
-
-      expect(response.status).toBe(200);
-      expect(scope.isDone()).toBe(true);
+    it('should throw PolicyError on 403 forbidden', async () => {
+      nock('https://api.example.com').get('/data').reply(403, 'Forbidden');
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
+        /policy|403/i
+      );
     });
 
-    it('should honor Retry-After through Ky retry handling', async () => {
-      const scope = nock('https://api.example.com')
-        .get('/data')
-        .reply(429, 'Too Many Requests', { 'Retry-After': '0.05' })
-        .get('/data')
-        .reply(200, { success: true });
-
-      const started = Date.now();
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
-      const elapsed = Date.now() - started;
-
-      expect(response.status).toBe(200);
-      expect(elapsed).toBeGreaterThanOrEqual(30);
-      expect(elapsed).toBeLessThan(1000);
-      expect(scope.isDone()).toBe(true);
+    it('should throw RateLimitError on 429 rate limit', async () => {
+      nock('https://api.example.com').get('/data').reply(429, 'Too Many Requests');
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toBeInstanceOf(
+        RateLimitError
+      );
     });
 
-    it('should retry on 418 teapot', async () => {
-      const scope = nock('https://api.example.com')
+    it('should extract and cap Retry-After header to 60s', async () => {
+      nock('https://api.example.com')
         .get('/data')
-        .reply(418, "I'm a teapot")
-        .get('/data')
-        .reply(200, { success: true });
+        .reply(429, 'Too Many Requests', { 'Retry-After': '120' });
 
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
-
-      expect(response.status).toBe(200);
-      expect(scope.isDone()).toBe(true);
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toMatchObject({
+        retryAfter: 60
+      });
     });
 
-    it('should not retry on 404 not found', async () => {
-      const scope = nock('https://api.example.com').get('/data').reply(404, 'Not Found');
-
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
-
-      expect(response.status).toBe(404);
-      expect(scope.isDone()).toBe(true);
+    it('should throw PolicyError on 418 teapot', async () => {
+      nock('https://api.example.com').get('/data').reply(418, "I'm a teapot");
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
+        /policy|418/i
+      );
     });
 
-    it('should not retry on 400 bad request', async () => {
-      const scope = nock('https://api.example.com').get('/data').reply(400, 'Bad Request');
-
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
-
-      expect(response.status).toBe(400);
-      expect(scope.isDone()).toBe(true);
+    it('should throw InvalidRequestError on 404 not found', async () => {
+      nock('https://api.example.com').get('/data').reply(404, 'Not Found');
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
+        /invalid|404/i
+      );
     });
 
-    it('should retry on network errors', async () => {
-      const scope = nock('https://api.example.com')
-        .get('/data')
-        .replyWithError('Network error')
-        .get('/data')
-        .reply(200, { success: true });
+    it('should throw InvalidRequestError on 400 bad request', async () => {
+      nock('https://api.example.com').get('/data').reply(400, 'Bad Request');
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
+        /invalid|400/i
+      );
+    });
 
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
+    it('should throw TransientError on network errors', async () => {
+      nock('https://api.example.com').get('/data').replyWithError('Network error');
 
-      expect(response.status).toBe(200);
-      expect(scope.isDone()).toBe(true);
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow(
+        /transient|network/i
+      );
     });
   });
 
@@ -298,12 +247,10 @@ describe('fetch helper', () => {
       expect(response.status).toBe(201);
     });
 
-    it('should handle error responses', async () => {
+    it('should throw on error responses', async () => {
       nock('https://api.example.com').get('/data').reply(404, 'Not Found');
 
-      const response = await fetch('https://api.example.com/data');
-
-      expect(response.status).toBe(404);
+      await expect(fetch('https://api.example.com/data')).rejects.toThrow();
     });
 
     it('should handle JSON responses', async () => {
@@ -374,17 +321,11 @@ describe('fetch helper', () => {
   });
 
   describe('integration with timeout and retries', () => {
-    it('should complete successfully with retries when fast', async () => {
-      const scope = nock('https://api.example.com')
-        .get('/data')
-        .reply(500, 'Server Error')
-        .get('/data')
-        .delay(100) // Still within 2-second timeout
-        .reply(200, { success: true });
+    it('should throw on first transient error without retries', async () => {
+      const scope = nock('https://api.example.com').get('/data').reply(500, 'Server Error');
 
-      const response = await fetch('https://api.example.com/data', { timeout: 2000 });
+      await expect(fetch('https://api.example.com/data', { timeout: 2000 })).rejects.toThrow();
 
-      expect(response.status).toBe(200);
       expect(scope.isDone()).toBe(true);
     });
 

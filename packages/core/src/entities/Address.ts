@@ -9,6 +9,13 @@ const numericConfidenceString = z
 
 /** Finite confidence values accepted from provider payloads. */
 export const ConfidenceSchema = z.union([z.number().finite(), numericConfidenceString]);
+const CoordinateSchema = z.number().finite();
+const BoundingBoxSchema = z.tuple([
+  CoordinateSchema,
+  CoordinateSchema,
+  CoordinateSchema,
+  CoordinateSchema
+]);
 
 export const AddressSchema = z.preprocess(
   (data: unknown) => {
@@ -22,6 +29,13 @@ export const AddressSchema = z.preprocess(
     name: z.string().trim().min(1).describe('The formatted address'),
     type: z.string().trim().min(1).describe('The address type'),
     confidence: ConfidenceSchema.describe('The confidence level'),
+    /** Provider score when the provider exposes one; it is not a probability. */
+    score: ConfidenceSchema.optional(),
+    latitude: CoordinateSchema.optional(),
+    longitude: CoordinateSchema.optional(),
+    bbox: BoundingBoxSchema.optional(),
+    source_id: z.string().trim().min(1).optional(),
+    provenance: z.string().trim().min(1).optional(),
     country: z.string().trim().min(1).optional().describe('The country name'),
     country_code: z
       .string()

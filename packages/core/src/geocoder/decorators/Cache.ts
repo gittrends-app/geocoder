@@ -1,10 +1,11 @@
+import { createHash } from 'node:crypto';
 import { constants } from 'node:zlib';
 import KeyvBrotli from '@keyv/compress-brotli';
 import { Cache as CacheManager, CreateCacheOptions, createCache } from 'cache-manager';
 import Debug from 'debug';
 import Keyv, { KeyvOptions } from 'keyv';
 import QuickLRU from 'quick-lru';
-import { Address } from '../../entities/Address.js';
+import { Address, AddressSchema } from '../../entities/Address.js';
 import { RequestAbortedError } from '../../errors/index.js';
 import { normalizeQueryWithOriginal } from '../../helpers/query.js';
 import { Geocoder } from '../Geocoder.js';
@@ -18,48 +19,68 @@ const debug = Debug('geocoder:cache');
 export class Cache extends Decorator {
   private cache: CacheManager;
   private pending = new Map<string, PendingRequest>();
+  private positiveTtl: number;
+  private negativeTtl: number;
 
   /**
    * @param service - Geocoder service
    */
-  constructor(
-    service: Geocoder,
-    options: { size?: number; ttl?: number; namespace?: string; secondary?: KeyvOptions }
-  ) {
+  constructor(service: Geocoder, options: CacheOptions = {}) {
     super(service);
+    const size = options.size ?? 1000;
+    validateSize(size);
+    const positiveTtl = options.positiveTtl ?? options.ttl ?? 0;
+    const negativeTtl = options.negativeTtl ?? options.ttl ?? 0;
+    validateTtl(positiveTtl);
+    validateTtl(negativeTtl);
+    if (options.namespace !== undefined && !options.namespace.trim()) {
+      throw new TypeError('Cache namespace must be a non-empty string');
+    }
+    if (options.provider !== undefined && !options.provider.trim()) {
+      throw new TypeError('Cache provider must be a non-empty string');
+    }
+    const configIdentity =
+      options.config === undefined ? undefined : configNamespace(options.config);
+    const namespace = [
+      options.namespace ?? service.constructor.name,
+      options.provider,
+      configIdentity
+    ]
+      .filter(Boolean)
+      .join(':');
     debug(
       'initializing with size=%d, ttl=%d, namespace=%s',
-      options.size || 1000,
-      options.ttl || 0,
-      options.namespace || 'default'
+      size,
+      positiveTtl,
+      namespace || 'default'
     );
 
     const stores: CreateCacheOptions['stores'] = [
       // In-memory cache with LRU
       new Keyv({
-        namespace: options.namespace,
-        store: new QuickLRU({ maxSize: options.size || 1000 }),
-        compression: new KeyvBrotli({
-          compressOptions: {
-            params: { [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MIN_QUALITY }
-          }
-        })
+        namespace,
+        store: new QuickLRU({ maxSize: size })
       })
     ];
 
     if (options.secondary) {
-      if (!options.secondary.compression) {
-        options.secondary.namespace = options.namespace;
-        options.secondary.compression = new KeyvBrotli({
+      const secondary: KeyvOptions = {
+        ...options.secondary,
+        namespace: options.secondary.namespace ?? namespace
+      };
+      if (!secondary.compression) {
+        secondary.compression = new KeyvBrotli({
           compressOptions: {
             params: { [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY }
           }
         });
       }
-      stores.push(new Keyv(options.secondary));
+      stores.push(new Keyv(secondary));
     }
 
-    this.cache = createCache({ ttl: options.ttl || 0, stores });
+    this.positiveTtl = positiveTtl;
+    this.negativeTtl = negativeTtl;
+    this.cache = createCache({ ttl: positiveTtl || undefined, stores });
   }
 
   /**
@@ -86,7 +107,9 @@ export class Cache extends Decorator {
     if (cached !== undefined) {
       debug('cache hit for: %s', normalized);
       // cached may be `false` sentinel which represents "not found"
-      return cached === false ? null : cached;
+      if (cached === false) return null;
+      if (AddressSchema.safeParse(cached).success) return cached;
+      await this.cache.del(normalized);
     }
 
     // If a request for the same canonical query is in flight, join it. Each
@@ -109,7 +132,11 @@ export class Cache extends Decorator {
           if (!controller.signal.aborted) {
             // Fire-and-forget cache write: do not block the response on cache set
             this.cache
-              .set(normalized, address || false)
+              .set(
+                normalized,
+                address || false,
+                address ? this.positiveTtl || undefined : this.negativeTtl || undefined
+              )
               .catch((err: Error) =>
                 debug('cache write failed for %s: %s', normalized, err?.message ?? String(err))
               );
@@ -218,6 +245,64 @@ export class Cache extends Decorator {
       );
     });
   }
+}
+
+export type CacheOptions = {
+  size?: number;
+  ttl?: number;
+  positiveTtl?: number;
+  negativeTtl?: number;
+  namespace?: string;
+  provider?: string;
+  config?: unknown;
+  secondary?: KeyvOptions;
+};
+
+function validateTtl(ttl: number): void {
+  if (!Number.isFinite(ttl) || ttl < 0)
+    throw new RangeError('Cache TTL must be a finite non-negative number');
+}
+
+function validateSize(size: number): void {
+  if (!Number.isSafeInteger(size) || size < 1) {
+    throw new RangeError('Cache size must be a positive integer');
+  }
+}
+
+function configNamespace(config: unknown): string {
+  let serialized: string;
+  try {
+    serialized = stableSerialize(config);
+  } catch (error) {
+    throw new TypeError(
+      `Cache config must be serializable: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  return createHash('sha256').update(serialized).digest('hex').slice(0, 16);
+}
+
+function stableSerialize(value: unknown, seen = new WeakSet<object>()): string {
+  if (value === null) return 'null';
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return JSON.stringify(value);
+  if (typeof value === 'bigint') return `bigint:${value.toString()}`;
+  if (typeof value !== 'object') return `${typeof value}:${String(value)}`;
+  if (seen.has(value)) throw new Error('circular value');
+  seen.add(value);
+  if (Array.isArray(value)) {
+    const result = `[${value.map((item) => stableSerialize(item, seen)).join(',')}]`;
+    seen.delete(value);
+    return result;
+  }
+  const result = `{${Object.keys(value)
+    .sort()
+    .map(
+      (key) =>
+        `${JSON.stringify(key)}:${stableSerialize((value as Record<string, unknown>)[key], seen)}`
+    )
+    .join(',')}}`;
+  seen.delete(value);
+  return result;
 }
 
 type PendingRequest = {

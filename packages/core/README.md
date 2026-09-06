@@ -1,103 +1,124 @@
----
-This `README.md` file provides an overview of the project and usage example.
----
+# `@gittrends-app/geocoder` core
 
-# GitTrends Geocoder - core
-
-GitTrends Geocoder is a geocoding service that uses OpenStreetMap and other services to provide geocoding functionality. It includes caching and request control mechanisms to improve its performance.
-
-## Usage
-
-Here is an example of how to use the GitTrends Geocoder with OpenStreetMap and caching:
+The core package exports the `Geocoder` interface and provider/decorator
+implementations. A geocoder implements:
 
 ```typescript
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
-import prettyformat from 'pretty-format';
-import { Cache, OpenStreetMap } from '../src/index.js';
-
-(async function main() {
-  // Create a new instance of the OpenStreetMap service
-  const openstreetmap = new OpenStreetMap({
-    concurrency: 1,
-    minConfidence: 0.5
-  });
-
-  // Create a cache decorator for the OpenStreetMap service (optional)
-  // This decorator works as a proxy for the OpenStreetMap service caching previous results
-  const service = new Cache(openstreetmap, {
-    dirname: resolve(tmpdir(), 'addresses.json'),
-    size: 1000,
-    ttl: 0
-  });
-
-  // Some examples of addresses for testing
-
-  let response = await service.search('Europe');
-  console.log(prettyformat.format(response, { min: true }));
-  // output: {"confidence": 0.8778887201599463, "name": "Europe", "source": "Europe", "type": "continent"}
-
-  response = await service.search('Earth planet');
-  console.log(prettyformat.format(response, { min: true }));
-  // output: null
-
-  response = await service.search('Brazil');
-  console.log(prettyformat.format(response, { min: true }));
-  // output: {"confidence": 0.8954966110329021, "country": "Brazil", "country_code": "BR", "name": "Brazil", "source": "Brazil", "type": "country"}
-
-  response = await service.search('São Paulo, BR');
-  console.log(prettyformat.format(response, { min: true }));
-  // output: {"confidence": 0.7446516338789693, "country": "Brazil", "country_code": "BR", "name": "Brazil, São Paulo", "source": "São Paulo, BR", "state": "São Paulo", "type": "municipality"}
-})();
+search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null>
 ```
 
-## API
-
-### OpenStreetMap
-
-The OpenStreetMap class provides geocoding functionality using the OpenStreetMap service.
+## OpenStreetMap / Nominatim
 
 ```typescript
-OpenStreetMap(options: { concurrency: number; minConfidence: number })
+import { OpenStreetMap } from '@gittrends-app/geocoder';
+
+const geocoder = new OpenStreetMap({
+  osmServer: 'https://nominatim.openstreetmap.org',
+  email: 'ops@example.com',
+  userAgent: 'my-app/1.0 (https://example.com/contact)',
+  concurrency: 1,
+  language: 'en-US',
+  minConfidence: 0.5
+});
+
+const result = await geocoder.search('São Paulo, Brazil');
 ```
 
-- `options.concurrency`: The number of concurrent requests allowed.
-- `options.minConfidence`: The minimum confidence level required for a result.
+Options are `osmServer`, `email`, `userAgent`, `concurrency`, `language`,
+`minConfidence`, `rate`, and `retries`. For the public server, the library
+requires an identifying `User-Agent` and contact email, sending them as the
+`User-Agent` header and `email` query parameter. Although the policy also
+accepts a `Referer`, the core exposes no `Referer` option. Nominatim's public
+maximum is one request per second. The default
+provider queue applies one request per second with one concurrent request.
+Pass a `rate` queue when a custom server's policy needs a different limit. A
+custom server is not automatically self-hosted or covered by the public
+server's terms, so follow its operator's policy.
 
-### LocationIQ
+For regular or long-running bulk use, Nominatim requires one thread, caching,
+and no more than four requests per minute. The core provider's one-request-
+per-second queue does not enforce that stricter bulk pace; the caller must
+pace bulk work.
 
-The LocationIQ class provides geocoding functionality using the LocationIQ API. It requires an API key.
+## Other providers
 
 ```typescript
-LocationIQ(options: { apiKey: string; baseUrl?: string; concurrency?: number; minConfidence?: number })
+import { LocationIQ, Photon } from '@gittrends-app/geocoder';
+
+const locationiq = new LocationIQ({
+  apiKey: 'your-locationiq-key',
+  baseUrl: 'https://us1.locationiq.com/v1',
+  language: 'en',
+  minConfidence: 0.5,
+  concurrency: 1,
+  retries: 2
+});
+const photon = new Photon({ language: 'en', concurrency: 1 });
+
+console.log(await locationiq.search('Seattle'));
+console.log(await photon.search('Seattle'));
 ```
 
-- `options.apiKey`: Required. Your LocationIQ API key (can also be provided via env LOCATIONIQ_KEY).
-- `options.baseUrl`: Optional. Custom LocationIQ base URL (default: https://us1.locationiq.com/v1).
-- `options.concurrency`: Optional. Number of concurrent requests.
-- `options.minConfidence`: Optional. Minimum confidence to accept a result.
+`LocationIQ` requires `apiKey` and also accepts `baseUrl`, `minConfidence`,
+`language`, `concurrency`, `rate`, and `retries`. `Photon` accepts `language`,
+`concurrency`, `rate`, and `retries`. Their default queues are also one
+request per second; use the provider's documented limits when changing the
+`rate` option. The core package does not read environment variables.
 
-Example:
+## Provider switching
 
 ```typescript
-import { LocationIQ, Cache } from '../src/index.js';
+import { Fallback, OpenStreetMap, Photon } from '@gittrends-app/geocoder';
 
-const locationiq = new LocationIQ({ apiKey: process.env.LOCATIONIQ_KEY!, concurrency: 1, minConfidence: 0.5 });
-const service = new Cache(locationiq, { dirname: '/tmp/addresses.json', size: 1000, ttl: 3600 });
-
-const res = await service.search('Seattle');
-console.log(res);
+const geocoder = new Fallback(
+  new OpenStreetMap({
+    osmServer: 'https://nominatim.openstreetmap.org',
+    email: 'ops@example.com',
+    userAgent: 'my-app/1.0 (https://example.com/contact)'
+  }),
+  new Photon()
+);
 ```
 
-### Cache
+`Fallback` tries the second service after a null result or a retryable provider
+failure. `LoadBalancer` accepts a non-empty array of geocoders and selects the
+least-loaded queue; it also wraps each choice with fallback providers.
 
-The Cache class provides a caching mechanism for the geocoding service.
+## Cache
 
 ```typescript
-Cache(service: OpenStreetMap, options: { dirname: string; size: number; ttl: number })
+import { Cache, Photon } from '@gittrends-app/geocoder';
+
+const cached = new Cache(new Photon(), {
+  size: 1000,
+  positiveTtl: 3_600_000,
+  negativeTtl: 300_000
+});
 ```
 
-- `service`: The geocoding service to be cached.
-- `options.dirname`: The directory name where the cache will be stored.
-- `options.size`: The maximum size of the cache.
-- `options.ttl`: The time-to-live for cache entries (in seconds).
+`Cache` options are `size`, `ttl`, `positiveTtl`, `negativeTtl`, `namespace`,
+`provider`, `config`, and optional secondary Keyv store options. TTLs are
+milliseconds; `ttl` sets both positive and negative TTLs, and `0` means no
+expiry. Positive and not-found results have separate TTLs, concurrent requests
+for the same normalized query are deduplicated, and a persistent secondary
+store can retain queries across process restarts. Set finite TTLs and manage
+secondary-store deletion when retention or privacy requirements demand it.
+
+## Address scores
+
+`confidence` is the provider value used for filtering; it is not a universal
+probability. `score` is the raw provider score when one is exposed.
+OpenStreetMap maps Nominatim `importance` to both fields, LocationIQ uses
+`importance` or `rank_search`, and Photon sets `confidence` to `0` and has no
+score. `minConfidence` applies to OpenStreetMap and LocationIQ.
+
+## Nominatim attribution and privacy
+
+Applications must display attribution to
+[OpenStreetMap/Nominatim](https://www.openstreetmap.org/copyright) wherever
+results are shown. The core
+library does not render attribution for you. Queries go to the selected
+provider, so disclose that third party to users and avoid sending personal or
+confidential data unless applicable privacy law and provider terms permit it.
+Do not use public Nominatim for autocomplete, systematic queries, details
+scraping, reselling, or creating a competing database.

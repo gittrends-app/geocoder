@@ -6,6 +6,12 @@ export const MAX_RATE_LIMIT_ENTRIES = 10_000;
 export const MAX_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const MAX_CACHE_SIZE = 1_000_000;
 export const MAX_SHUTDOWN_TIMEOUT_MS = 120_000;
+export const MAX_PROVIDER_TIMEOUT_MS = 120_000;
+
+export const PROVIDER_NAMES = ['osm', 'photon', 'locationiq'] as const;
+export type ProviderName = (typeof PROVIDER_NAMES)[number];
+export const RATE_PROFILES = ['public', 'public-bulk', 'self-hosted'] as const;
+export type RateProfile = (typeof RATE_PROFILES)[number];
 
 const controlCharacters = /[\u0000-\u001F\u007F-\u009F]/u;
 
@@ -88,6 +94,101 @@ export function parseCacheSize(value: unknown): number {
 
 export function parseConcurrency(value: unknown): number {
   return parseBoundedInteger(value, 'CONCURRENCY', 1, Number.MAX_SAFE_INTEGER);
+}
+
+export function parseDuration(value: unknown, field: string): number {
+  if (typeof value === 'number')
+    return parseBoundedInteger(value, field, 1, MAX_RATE_LIMIT_WINDOW_MS);
+  if (typeof value !== 'string' || !value.trim())
+    invalid(field, value, 'must be a positive duration');
+  const match = value
+    .trim()
+    .toLowerCase()
+    .match(/^([0-9]+(?:\.[0-9]+)?)\s*(ms|s|m|h|milliseconds?|seconds?|minutes?|hours?)?$/u);
+  if (!match) invalid(field, value, 'must be a positive duration');
+  const multiplier =
+    {
+      ms: 1,
+      millisecond: 1,
+      milliseconds: 1,
+      s: 1_000,
+      second: 1_000,
+      seconds: 1_000,
+      m: 60_000,
+      minute: 60_000,
+      minutes: 60_000,
+      h: 3_600_000,
+      hour: 3_600_000,
+      hours: 3_600_000
+    }[match[2] ?? 'ms'] ?? 0;
+  const milliseconds = Number(match[1]) * multiplier;
+  if (
+    !Number.isFinite(milliseconds) ||
+    milliseconds <= 0 ||
+    milliseconds > MAX_RATE_LIMIT_WINDOW_MS
+  ) {
+    invalid(field, value, 'must be a positive duration of at most 24 hours');
+  }
+  return milliseconds;
+}
+
+export function parseProviders(value: unknown): ProviderName[] {
+  if (Array.isArray(value)) value = value.join(',');
+  if (typeof value !== 'string' || !value.trim())
+    invalid('PROVIDERS', value, `must be a comma-separated list of: ${PROVIDER_NAMES.join(', ')}`);
+  const providers = value.split(',').map((provider) => provider.trim().toLowerCase());
+  if (
+    providers.some((provider) => !PROVIDER_NAMES.includes(provider as ProviderName)) ||
+    new Set(providers).size !== providers.length
+  ) {
+    invalid('PROVIDERS', value, `must contain unique providers: ${PROVIDER_NAMES.join(', ')}`);
+  }
+  return providers as ProviderName[];
+}
+
+export function parseRateProfile(value: unknown): RateProfile {
+  if (
+    typeof value !== 'string' ||
+    !RATE_PROFILES.includes(value.trim().toLowerCase() as RateProfile)
+  ) {
+    invalid('RATE_PROFILE', value, `must be one of: ${RATE_PROFILES.join(', ')}`);
+  }
+  return value.trim().toLowerCase() as RateProfile;
+}
+
+export function validateLanguage(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z]{2,3}(?:-[A-Za-z]{2,4})?$/u.test(value.trim())) {
+    invalid('PROVIDER_LANGUAGE', value, 'must be a language tag such as en or en-US');
+  }
+  return value.trim();
+}
+
+export function parseRetries(value: unknown): number {
+  return parseBoundedInteger(value, 'PROVIDER_RETRIES', 0, 10);
+}
+
+export function parseProviderTimeout(value: unknown): number {
+  return parseBoundedInteger(value, 'PROVIDER_TIMEOUT_MS', 100, MAX_PROVIDER_TIMEOUT_MS);
+}
+
+export function validateApiKey(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== 'string' ||
+    !value.trim() ||
+    controlCharacters.test(value) ||
+    value.length > 512
+  ) {
+    invalid('LOCATIONIQ_KEY', value, 'must be a non-empty value of at most 512 characters');
+  }
+  return value.trim();
+}
+
+export function parseBoolean(value: unknown, field: string): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string' && ['true', 'false'].includes(value.trim().toLowerCase()))
+    return value.trim().toLowerCase() === 'true';
+  invalid(field, value, 'must be true or false');
 }
 
 export function parseShutdownTimeout(value: unknown): number {

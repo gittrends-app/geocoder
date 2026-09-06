@@ -33,6 +33,7 @@ describe('Rate Limiting', () => {
     const body = res.json();
     expect(body).toHaveProperty('error', 'Too Many Requests');
     expect(body).toHaveProperty('message');
+    expect(Number(res.headers['retry-after'])).toBeGreaterThanOrEqual(1);
   });
 
   it('uses Fastify request identity instead of a spoofed forwarded header', async () => {
@@ -56,6 +57,28 @@ describe('Rate Limiting', () => {
 
     expect(first.statusCode).toBe(404);
     expect(second.statusCode).toBe(429);
+  });
+
+  it('uses the forwarded client identity only when trusted proxy mode is enabled', async () => {
+    const app = createApp({
+      geocoder: { search: async () => null },
+      trustProxy: true,
+      rateLimit: { max: 1, timeWindow: '1 minute' },
+      helmet: { enabled: false }
+    });
+    apps.push(app);
+
+    const first = await app.inject({
+      url: '/search?q=test',
+      headers: { 'x-forwarded-for': 'client-a' }
+    });
+    const second = await app.inject({
+      url: '/search?q=test',
+      headers: { 'x-forwarded-for': 'client-b' }
+    });
+
+    expect(first.statusCode).toBe(404);
+    expect(second.statusCode).toBe(404);
   });
 
   it('exempts only liveness from an exhausted rate limit', async () => {
@@ -95,10 +118,19 @@ describe('Rate Limiting', () => {
     });
     apps.push(app);
 
-    expect((await app.inject({ method: 'GET', url: '/search?q=test', remoteAddress: '10.0.0.1' })).statusCode).toBe(404);
+    expect(
+      (await app.inject({ method: 'GET', url: '/search?q=test', remoteAddress: '10.0.0.1' }))
+        .statusCode
+    ).toBe(404);
     await new Promise((resolve) => setTimeout(resolve, 2));
-    expect((await app.inject({ method: 'GET', url: '/search?q=test', remoteAddress: '10.0.0.2' })).statusCode).toBe(404);
-    expect((await app.inject({ method: 'GET', url: '/search?q=test', remoteAddress: '10.0.0.1' })).statusCode).toBe(404);
+    expect(
+      (await app.inject({ method: 'GET', url: '/search?q=test', remoteAddress: '10.0.0.2' }))
+        .statusCode
+    ).toBe(404);
+    expect(
+      (await app.inject({ method: 'GET', url: '/search?q=test', remoteAddress: '10.0.0.1' }))
+        .statusCode
+    ).toBe(404);
   });
 
   it('rejects invalid limiter settings and unsupported Redis configuration', () => {
@@ -109,7 +141,10 @@ describe('Rate Limiting', () => {
       createApp({ geocoder: { search: async () => null }, rateLimit: { timeWindow: 'forever' } })
     ).toThrow();
     expect(() =>
-      createApp({ geocoder: { search: async () => null }, rateLimit: { redis: 'redis://localhost' } })
+      createApp({
+        geocoder: { search: async () => null },
+        rateLimit: { redis: 'redis://localhost' }
+      })
     ).toThrow('Redis support');
   });
 });

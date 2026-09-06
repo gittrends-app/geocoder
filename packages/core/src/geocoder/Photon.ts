@@ -1,8 +1,9 @@
 import Debug from 'debug';
 import { Address, AddressSchema } from '../entities/Address.js';
+import { formatDisplayName } from '../helpers/displayName.js';
 import fetch from '../helpers/fetch.js';
 import { normalizeQueryWithOriginal } from '../helpers/query.js';
-import { Throttler } from './decorators/Throttler.js';
+import { Throttler, type ThrottlerOptions } from './decorators/Throttler.js';
 import { Geocoder } from './Geocoder.js';
 
 const debug = Debug('geocoder:Photon');
@@ -10,104 +11,98 @@ const debug = Debug('geocoder:Photon');
 type PhotonSearchResult = {
   features?: Array<{
     properties: {
-      osm_type: string;
-      osm_id: number;
-      osm_key: string;
-      osm_value: string;
+      osm_type?: string;
+      osm_id?: number;
+      osm_value?: string;
       name?: string;
       type?: string;
       country?: string;
       countrycode?: string;
-      county?: string;
       state?: string;
     };
+    geometry?: { coordinates?: [number, number] };
   }>;
 };
 
-/**
- * Base for Photon geocoder service
- */
 class BasePhoton implements Geocoder {
-  /**
-   * Constructor that creates the geocoder service
-   */
-  constructor() {
-    debug('initialized');
-  }
+  constructor(
+    private readonly language: string,
+    private readonly timeoutMs?: number
+  ) {}
 
-  /**
-   * Search for addresses
-   * @param q - Search query
-   * @returns Promise<Address | null> - The address found or null
-   */
   async search(q: string, options?: { signal?: AbortSignal }): Promise<Address | null> {
     const { normalized } = normalizeQueryWithOriginal(q);
-    debug('searching for: %s', normalized);
-
-    try {
-      const data = await fetch<PhotonSearchResult>(
-        `https://photon.komoot.io/api/?${new URLSearchParams([
-          ['q', normalized],
-          ['layer', 'district'],
-          ['layer', 'city'],
-          ['layer', 'county'],
-          ['layer', 'state'],
-          ['layer', 'country'],
-          ['osm_tag', 'place'],
-          ['osm_tag', 'boundary'],
-          ['lang', 'en']
-        ]).toString()}`,
-        { signal: options?.signal }
-      ).then((res) => res?.json());
-
-      const [location] = Array.isArray(data?.features) ? data.features : [];
-      if (!location || !location.properties || typeof location.properties !== 'object') {
-        debug('no results found for: %s', normalized);
-        return null;
+    const data = await fetch<PhotonSearchResult>(
+      `https://photon.komoot.io/api/?${new URLSearchParams([
+        ['q', normalized],
+        ['layer', 'district'],
+        ['layer', 'city'],
+        ['layer', 'county'],
+        ['layer', 'state'],
+        ['layer', 'country'],
+        ['osm_tag', 'place'],
+        ['osm_tag', 'boundary'],
+        ['lang', this.language]
+      ]).toString()}`,
+      {
+        signal: options?.signal,
+        timeout: this.timeoutMs,
+        retry: { limit: 0 },
+        provider: 'photon'
       }
+    ).then((res) => res.json());
 
-      const parsed = AddressSchema.safeParse({
-        provider: 'photon',
-        source: normalized,
-        name:
-          location.properties.name ||
-          [location.properties.country, location.properties.state].filter(Boolean).join(', ') ||
-          location.properties.country ||
-          '',
-        type: location.properties.osm_value,
-        confidence: 0,
-        country: location.properties.country,
-        country_code: location.properties.countrycode,
-        state: location.properties.state,
-        city: location.properties.type === 'city' ? location.properties.name : undefined
-      });
-      if (!parsed.success) {
-        debug('discarding malformed Photon result for: %s', normalized);
-        return null;
-      }
-      debug('found address: %s', parsed.data.name);
-      return parsed.data;
-    } catch (error) {
-      // Log and propagate unexpected errors
-      debug(
-        'photon error for %s: %s',
-        normalized,
-        error instanceof Error ? error.message : String(error)
-      );
-      throw error;
+    const [location] = Array.isArray(data?.features) ? data.features : [];
+    if (!location || !location.properties || typeof location.properties !== 'object') return null;
+    const parsed = AddressSchema.safeParse({
+      provider: 'photon',
+      source: normalized,
+      name: formatDisplayName(
+        [location.properties.name, location.properties.state, location.properties.country],
+        location.properties.country ?? ''
+      ),
+      type: location.properties.osm_value ?? location.properties.type,
+      confidence: 0,
+      latitude: location.geometry?.coordinates?.[1],
+      longitude: location.geometry?.coordinates?.[0],
+      source_id:
+        location.properties.osm_type && location.properties.osm_id !== undefined
+          ? `${location.properties.osm_type}/${location.properties.osm_id}`
+          : undefined,
+      provenance: 'photon',
+      country: location.properties.country,
+      country_code: location.properties.countrycode,
+      state: location.properties.state,
+      city: location.properties.type === 'city' ? location.properties.name : undefined
+    });
+    if (!parsed.success) {
+      debug('discarding malformed Photon result for: %s', normalized);
+      return null;
     }
+    return parsed.data;
   }
 }
 
-/**
- * Photon geocoder service
- */
+export type PhotonOptions = {
+  concurrency?: number;
+  language?: string;
+  timeoutMs?: number;
+  rate?: Omit<ThrottlerOptions, 'retries' | 'retryDelay'>;
+  retries?: number;
+};
+
 export class Photon extends Throttler implements Geocoder {
-  /**
-   * Constructor that consider API limits
-   * @param options - Service options
-   */
-  constructor({ concurrency }: { concurrency: number }) {
-    super(new BasePhoton(), { concurrency, intervalCap: 1000 });
+  constructor(options: PhotonOptions = {}) {
+    const queueOptions = options.rate
+      ? {
+          ...options.rate,
+          concurrency: options.rate.concurrency ?? options.concurrency ?? 1
+        }
+      : { concurrency: options.concurrency ?? 1, intervalCap: 1, interval: 1000, strict: true };
+    super(new BasePhoton(options.language ?? 'en', options.timeoutMs), {
+      ...queueOptions,
+      retries: options.retries ?? 2,
+      retryDelay: 250
+    });
   }
 }

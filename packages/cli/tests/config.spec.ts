@@ -5,9 +5,12 @@ import {
   normalizeOsmServerUrl,
   parseCacheSize,
   parseConcurrency,
+  parseDuration,
   parseLogLevel,
   parsePort,
+  parseProviders,
   parseRateLimitWindow,
+  parseRateProfile,
   parseShutdownTimeout,
   validateCacheDirectory,
   validateEmail,
@@ -76,12 +79,16 @@ describe('CLI configuration validation', () => {
     expect(() => validateCacheDirectory(`cache${control}dir`)).toThrow();
   });
 
-  it.each(['localhost', 'example.test', '127.0.0.1', '::1', '[::1]', '2001:db8::1'])(
-    'accepts valid host or IP literal %s',
-    (host) => {
-      expect(() => parseEnv({ HOST: host })).not.toThrow();
-    }
-  );
+  it.each([
+    'localhost',
+    'example.test',
+    '127.0.0.1',
+    '::1',
+    '[::1]',
+    '2001:db8::1'
+  ])('accepts valid host or IP literal %s', (host) => {
+    expect(() => parseEnv({ HOST: host })).not.toThrow();
+  });
 
   it.each([
     'https://example.test',
@@ -116,13 +123,18 @@ describe('CLI configuration validation', () => {
     expect(() => parseEnv({ OSM_SERVER: 'http://localhost' })).toThrow();
   });
 
-  it.each(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])(
-    'accepts valid log level %s',
-    (level) => {
-      expect(parseLogLevel(level)).toBe(level);
-      expect(parseLogLevel(level.toUpperCase())).toBe(level);
-    }
-  );
+  it.each([
+    'fatal',
+    'error',
+    'warn',
+    'info',
+    'debug',
+    'trace',
+    'silent'
+  ])('accepts valid log level %s', (level) => {
+    expect(parseLogLevel(level)).toBe(level);
+    expect(parseLogLevel(level.toUpperCase())).toBe(level);
+  });
 
   it('defaults LOG_LEVEL to info when absent', () => {
     const parsed = parseEnv({});
@@ -131,6 +143,10 @@ describe('CLI configuration validation', () => {
 
   it('defaults CONCURRENCY to 1 when absent', () => {
     expect(parseEnv({}).CONCURRENCY).toBe(1);
+  });
+
+  it('keeps core retry safety when CLI retries are not configured', () => {
+    expect(parseEnv({}).PROVIDER_RETRIES).toBe(2);
   });
 
   it('parses CONCURRENCY from environment', () => {
@@ -151,5 +167,37 @@ describe('CLI configuration validation', () => {
     expect(() => parseLogLevel('')).toThrow();
     expect(() => parseLogLevel('  ')).toThrow();
     expect(() => parseEnv({ LOG_LEVEL: 'verbose' })).toThrow();
+  });
+
+  it('parses explicit provider and cache policy settings', () => {
+    expect(parseProviders('osm,photon')).toEqual(['osm', 'photon']);
+    expect(parseProviders('locationiq')).toEqual(['locationiq']);
+    expect(parseRateProfile('self-hosted')).toBe('self-hosted');
+    expect(parseRateProfile('public-bulk')).toBe('public-bulk');
+    expect(parseDuration('2 seconds', 'CACHE_POSITIVE_TTL_MS')).toBe(2000);
+    expect(() => parseProviders('photon,photon')).toThrow();
+    expect(() => parseRateProfile('fast')).toThrow();
+  });
+
+  it('parses rate limiting and provider settings lazily from the environment', () => {
+    const parsed = parseEnv({
+      NODE_ENV: 'production',
+      PROVIDERS: 'photon,osm',
+      PROVIDER_LANGUAGE: 'de-DE',
+      PROVIDER_TIMEOUT_MS: '2500',
+      PROVIDER_RETRIES: '2',
+      RATE_LIMIT_ENABLED: 'true',
+      RATE_LIMIT_MAX: '20',
+      RATE_LIMIT_WINDOW: '30 seconds',
+      TRUST_PROXY: 'true'
+    });
+
+    expect(parsed.PROVIDERS).toEqual(['photon', 'osm']);
+    expect(parsed.PROVIDER_LANGUAGE).toBe('de-DE');
+    expect(parsed.PROVIDER_TIMEOUT_MS).toBe(2500);
+    expect(parsed.RATE_LIMIT_ENABLED).toBe(true);
+    expect(parsed.RATE_LIMIT_MAX).toBe(20);
+    expect(parsed.RATE_LIMIT_WINDOW).toBe('30 seconds');
+    expect(parsed.TRUST_PROXY).toBe(true);
   });
 });

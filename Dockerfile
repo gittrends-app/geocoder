@@ -24,18 +24,20 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/packages/cli/dist ./packages/cli/dist
 COPY --from=build /app/packages/cli/package.json ./packages/cli/
 
-# Create .cache directory
-RUN mkdir -p /app/.cache
+# Create .cache directory and let the unprivileged runtime user write to it
+RUN mkdir -p /app/.cache && chown -R node:node /app
 
 # Set environment variables
 ENV NODE_NO_WARNINGS=1
 ENV CACHE_DIR=/app/.cache CACHE_SIZE=10000 CONCURRENCY=1
-ENV HOST=:: PORT=80 NODE_ENV=production
+ENV HOST=0.0.0.0 PORT=8080 NODE_ENV=production
 ENV OSM_SERVER=https://nominatim.geocoding.ai
-EXPOSE 80
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD node -e "fetch('http://127.0.0.1:8080/health/live').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"
 
 # Define volume for .cache folder
 VOLUME ["/app/.cache"]
+USER node
 
 WORKDIR /app/packages/cli
 ENTRYPOINT [ "node", "dist/cli.js" ]

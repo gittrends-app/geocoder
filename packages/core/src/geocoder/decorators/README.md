@@ -1,104 +1,109 @@
-# Geocoder Decorators
+# Geocoder decorators
 
-This directory contains decorator implementations that add functionality
-to geocoder services using the Decorator pattern. Decorators wrap a
-Geocoder and enhance behavior such as caching, throttling, fallback,
-and load-balancing.
+Decorators wrap any `Geocoder` and preserve its `search` API. They can add
+caching, throttling, fallback, or load balancing.
 
-## Available Decorators
-
-### Cache
-
-Adds two-tier caching (memory + optional persistent storage) to any geocoder.
-
-Key behaviors:
-
-- Two-tier storage: in-memory LRU + optional secondary (Keyv) store
-- Negative-cache sentinel: cached `false` represents "not found" and is
-  respected as a valid cache entry
-- Deduplication: concurrent requests for the same query are deduplicated
-  using an internal `pending` map which stores the in-flight promise
-- Fire-and-forget cache writes: write failures are logged but don't block
-  the response
-
-Usage:
+## Cache
 
 ```typescript
-const geocoder = new Cache(
-  new OpenStreetMap(config),
-  { size: 1000, ttl: 3600 }
-);
+import { Cache, Photon } from '@gittrends-app/geocoder';
+
+const geocoder = new Cache(new Photon(), {
+  size: 1000,
+  positiveTtl: 3_600_000,
+  negativeTtl: 300_000
+});
 ```
 
-### Throttler
+`Cache` uses an in-memory LRU and optional secondary Keyv store options. Its
+options are `size`, `ttl`, `positiveTtl`, `negativeTtl`, `namespace`,
+`provider`, `config`, and `secondary`. TTLs are milliseconds; `ttl` is an
+alias for both result types and `0` means no expiry. Not-found results are
+cached separately, and concurrent searches for the same normalized query are
+deduplicated. Persistent stores may retain queries and results across
+restarts, so configure finite TTLs and a deletion policy when required.
 
-Limits request rate to comply with API usage policies.
-
-Key behaviors:
-
-- Uses PQueue to limit concurrency and rate
-- Respects provided AbortSignal before queueing and after dequeueing; if
-  aborted, a `RequestAbortedError` is thrown so callers can detect aborts
-
-Usage:
+## Throttler
 
 ```typescript
-const geocoder = new Throttler(
-  new OpenStreetMap(config),
-  { concurrency: 1, intervalCap: 1000 }
-);
+import { Photon, Throttler } from '@gittrends-app/geocoder';
 
-// Throttler can be used with LocationIQ as well
-import { LocationIQ } from '../../LocationIQ.js';
-const li = new LocationIQ({ apiKey: process.env.LOCATIONIQ_KEY, concurrency: 1 });
-const throttled = new Throttler(li, { concurrency: 1, intervalCap: 1000 });
+const geocoder = new Throttler(new Photon(), {
+  concurrency: 1,
+  intervalCap: 1,
+  interval: 1000,
+  strict: true,
+  retries: 2,
+  retryDelay: 250
+});
 ```
 
-### Fallback
+`ThrottlerOptions` is the PQueue options object plus `retries` and
+`retryDelay`. It limits the queue supplied to it and retries only retryable
+errors; it is not a general guarantee of compliance with an upstream
+provider's policy. A one-request-per-second queue matches the public
+Nominatim maximum, but regular or long-running bulk use must additionally be
+single-threaded, cached, and limited to four requests per minute. Coordinate
+all queues and processes sharing a provider account or endpoint.
 
-Chains multiple geocoders, falling back on failure or null results.
+Provider constructors already create a default one-request-per-second queue.
+Use their `rate` option, or a `Throttler`, only when the provider's documented
+limits and the workload require a different queue.
 
-Usage:
+## Fallback
 
 ```typescript
+import { Fallback, OpenStreetMap, Photon } from '@gittrends-app/geocoder';
+
 const geocoder = new Fallback(
-  new OpenStreetMap(config),
-  new Photon(config)
+  new OpenStreetMap({
+    osmServer: 'https://nominatim.openstreetmap.org',
+    email: 'ops@example.com',
+    userAgent: 'my-app/1.0 (https://example.com/contact)'
+  }),
+  new Photon()
 );
 ```
 
-### LoadBalancer
+The fallback is used for a null result or a retryable provider failure. Abort
+errors and non-retryable failures are not silently switched to another
+provider.
 
-Distributes requests across multiple geocoder instances.
-
-Key behaviors:
-
-- Selects the provider with the lowest (size + pending) load
-- Wraps providers with `Fallback` so a failed provider falls back to
-  alternative providers
-- Emits lightweight debug events on PQueue
-
-Usage:
+## LoadBalancer
 
 ```typescript
+import { LoadBalancer, Photon } from '@gittrends-app/geocoder';
+
 const geocoder = new LoadBalancer([
-  new OpenStreetMap(config1),
-  new OpenStreetMap(config2)
+  new Photon(),
+  new Photon({ concurrency: 1 })
 ]);
 ```
 
+`LoadBalancer` requires a non-empty array, selects the provider with the
+lowest queue size plus pending count, and gives each selection fallback access
+to the other providers. An optional constructor option is
+`{ timeoutMs?: number }`.
+
 ## Composition
 
-Decorators can be composed together:
-
 ```typescript
+import { Cache, Fallback, OpenStreetMap, Photon } from '@gittrends-app/geocoder';
+
 const geocoder = new Cache(
-  new LoadBalancer([
-    new Fallback(osm1, photon1),
-    new Fallback(osm2, photon2)
-  ]),
-  { size: 1000 }
+  new Fallback(
+    new OpenStreetMap({
+      osmServer: 'https://nominatim.openstreetmap.org',
+      email: 'ops@example.com',
+      userAgent: 'my-app/1.0 (https://example.com/contact)'
+    }),
+    new Photon()
+  ),
+  { size: 1000, positiveTtl: 3_600_000, negativeTtl: 300_000 }
 );
 ```
 
-This creates a cached, load-balanced geocoder with fallback providers.
+When public Nominatim is in the chain, display OpenStreetMap attribution and
+follow its usage policy. Queries are third-party disclosures: do not pass
+sensitive data to an upstream provider unless applicable privacy law and
+provider terms permit it.

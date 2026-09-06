@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Address } from '../../entities/Address.js';
-import { RequestAbortedError } from '../../errors/index.js';
+import { PolicyError, RequestAbortedError, TransientError } from '../../errors/index.js';
 import { Geocoder } from '../Geocoder.js';
 import { Fallback } from './Fallback.js';
 
@@ -95,5 +95,27 @@ describe('Fallback', () => {
     const fallback = new Fallback(primaryGeocoder, fallbackGeocoder);
     await expect(fallback.search('query')).rejects.toThrow('fallback failed');
     expect(fallbackGeocoder.search).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back for retryable provider errors but propagates policy errors', async () => {
+    const fallbackGeocoder = {
+      search: vi.fn().mockResolvedValue(mockAddress)
+    } as unknown as Geocoder;
+    const transient = new Fallback(
+      { search: vi.fn().mockRejectedValue(new TransientError('primary')) } as unknown as Geocoder,
+      fallbackGeocoder
+    );
+
+    await expect(transient.search('query')).resolves.toBe(mockAddress);
+    expect(fallbackGeocoder.search).toHaveBeenCalledOnce();
+
+    const policyFallback = { search: vi.fn() } as unknown as Geocoder;
+    const policy = new Fallback(
+      { search: vi.fn().mockRejectedValue(new PolicyError('primary')) } as unknown as Geocoder,
+      policyFallback
+    );
+
+    await expect(policy.search('query')).rejects.toBeInstanceOf(PolicyError);
+    expect(policyFallback.search).not.toHaveBeenCalled();
   });
 });

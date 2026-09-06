@@ -188,4 +188,77 @@ describe('Cache decorator - deduplication and non-blocking writes', () => {
     const pending = (cache as any).pending as Map<string, Promise<Address | null>>;
     expect(pending.size).toBe(0);
   });
+
+  it('expires positive and negative entries using their configured TTLs', async () => {
+    const address = {
+      provider: 'photon',
+      source: 'Positive',
+      name: 'Positive',
+      type: 'city',
+      confidence: 0
+    } as Address;
+    const positiveSearch = vi.fn().mockResolvedValue(address);
+    const positiveCache = new Cache({ search: positiveSearch } as unknown as Geocoder, {
+      positiveTtl: 20
+    });
+
+    await positiveCache.search('Positive');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await positiveCache.search('Positive');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await positiveCache.search('Positive');
+    expect(positiveSearch).toHaveBeenCalledTimes(2);
+
+    const negativeSearch = vi.fn().mockResolvedValue(null);
+    const negativeCache = new Cache({ search: negativeSearch } as unknown as Geocoder, {
+      negativeTtl: 20
+    });
+    await negativeCache.search('Negative');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await negativeCache.search('Negative');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await negativeCache.search('Negative');
+    expect(negativeSearch).toHaveBeenCalledTimes(2);
+  });
+
+  it('discards cached values that do not satisfy AddressSchema', async () => {
+    const search = vi.fn().mockResolvedValue({
+      provider: 'photon',
+      source: 'stale',
+      name: 'Fresh',
+      type: 'city',
+      confidence: 0
+    } as Address);
+    const cache = new Cache({ search } as unknown as Geocoder);
+    await (cache as any).cache.set('stale', { source: 'stale', name: 'invalid' });
+
+    await expect(cache.search('stale')).resolves.toMatchObject({ name: 'Fresh' });
+    expect(search).toHaveBeenCalledOnce();
+  });
+
+  it('uses a distinct namespace for each effective provider configuration', async () => {
+    const first = { provider: 'photon', source: 'same', name: 'First', confidence: 0 } as Address;
+    const second = { provider: 'photon', source: 'same', name: 'Second', confidence: 0 } as Address;
+    const firstSearch = vi.fn().mockResolvedValue(first);
+    const secondSearch = vi.fn().mockResolvedValue(second);
+    const config = {
+      schema: 1,
+      provider: 'photon',
+      endpoint: 'https://one.example',
+      language: 'en'
+    };
+    const firstCache = new Cache({ search: firstSearch } as unknown as Geocoder, {
+      namespace: 'cli',
+      config
+    });
+    const secondCache = new Cache({ search: secondSearch } as unknown as Geocoder, {
+      namespace: 'cli',
+      config: { ...config, endpoint: 'https://two.example' }
+    });
+
+    await expect(firstCache.search('same')).resolves.toMatchObject({ name: 'First' });
+    await expect(secondCache.search('same')).resolves.toMatchObject({ name: 'Second' });
+    expect(firstSearch).toHaveBeenCalledOnce();
+    expect(secondSearch).toHaveBeenCalledOnce();
+  });
 });

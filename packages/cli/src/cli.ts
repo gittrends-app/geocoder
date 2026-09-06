@@ -1,21 +1,33 @@
 #!/usr/bin/env node
-import { InvalidArgumentError, Option, program } from 'commander';
+import { readFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import consola from 'consola';
 import { AddressInfo } from 'net';
 import pJson from '../package.json' with { type: 'json' };
-import { createApp } from './app.js';
+import { createApp, createConfiguredGeocoder } from './app.js';
+import { runBulk } from './bulk.js';
 import {
   isDefaultNominatimServer,
   normalizeOsmServerUrl,
   parseCacheSize,
   parseConcurrency,
+  parseDuration,
   parsePort,
+  parseProviders,
+  parseProviderTimeout,
+  parseRateLimitMax,
+  parseRateLimitWindow,
+  parseRateProfile,
+  parseRetries,
+  validateApiKey,
   validateCacheDirectory,
   validateEmail,
   validateHost,
+  validateLanguage,
   validateUserAgent
 } from './helpers/config.js';
-import { env } from './helpers/env.js';
+import { parseEnv } from './helpers/env.js';
 
 const commanderParser =
   <T>(parser: (value: string) => T) =>
@@ -27,123 +39,306 @@ const commanderParser =
     }
   };
 
-/**
- * Create a new CLI program and add options to it.
- */
-program
-  .addOption(
-    new Option('--osm-server <SERVER>', 'OpenStreetMap server to use')
-      .default(env.OSM_SERVER)
-      .env('OSM_SERVER')
-      .argParser(commanderParser(normalizeOsmServerUrl))
-  )
-  .addOption(
-    new Option('--osm-email <EMAIL>', 'Email to use for OpenStreetMap requests')
-      .default(env.OSM_EMAIL)
-      .env('OSM_EMAIL')
-      .argParser(commanderParser((value) => validateEmail(value) as string))
-  )
-  .addOption(
-    new Option('--osm-agent <AGENT>', 'User agent to use for OpenStreetMap requests')
-      .default(env.OSM_USER_AGENT)
-      .env('OSM_USER_AGENT')
-      .argParser(commanderParser((value) => validateUserAgent(value) as string))
-  )
-  .addOption(
-    new Option('--cache-dir <DIR>', 'Directory to store cache files')
-      .default(env.CACHE_DIR)
-      .env('CACHE_DIR')
-      .argParser(commanderParser((value) => validateCacheDirectory(value) as string))
-  )
-  .addOption(
-    new Option('--cache-size <SIZE>', 'Number of records to keep in memory')
-      .default(env.CACHE_SIZE)
-      .env('CACHE_SIZE')
-      .argParser(commanderParser(parseCacheSize))
-  )
-  .addOption(
-    new Option('--concurrency <CONCURRENCY>', 'Number of concurrent geocoding requests')
-      .default(env.CONCURRENCY)
-      .env('CONCURRENCY')
-      .argParser(commanderParser(parseConcurrency))
-  )
-  .addOption(
-    new Option('-H, --host <HOST>', 'Host to listen on')
-      .default(env.HOST)
-      .env('HOST')
-      .argParser(commanderParser(validateHost))
-  )
-  .addOption(
-    new Option('-p, --port <PORT>', 'Port to listen on')
-      .default(env.PORT)
-      .env('PORT')
-      .argParser(commanderParser(parsePort))
-  )
-  .helpOption('--help', 'Show usage instructions')
-  .version(pJson.version)
-  .action(async (options) => {
-    const { osmServer, osmEmail, osmAgent } = options;
-    const normalizedOsmServer = normalizeOsmServerUrl(osmServer);
-    if (isDefaultNominatimServer(normalizedOsmServer) && (!osmEmail || !osmAgent)) {
-      program.error(
-        'You must provide an email and user agent for the default server (--help for more info)'
-      );
-    }
+const durationParser = (field: string) => (value: string) => {
+  return parseDuration(value, field);
+};
 
-    const app = createApp({
-      cache: { dirname: options.cacheDir, size: options.cacheSize },
-      geocoder: {
-        osmServer: normalizedOsmServer,
-        email: osmEmail,
-        userAgent: osmAgent,
-        concurrency: options.concurrency,
-        minConfidence: 0
-      },
-      debug: env.NODE_ENV === 'development',
-      logLevel: env.LOG_LEVEL
+function addConfigOptions(command: Command): Command {
+  return command
+    .addOption(
+      new Option('--osm-server <SERVER>', 'OpenStreetMap server to use').argParser(
+        commanderParser(normalizeOsmServerUrl)
+      )
+    )
+    .addOption(
+      new Option('--osm-email <EMAIL>', 'Email to use for OpenStreetMap requests').argParser(
+        commanderParser((value) => validateEmail(value) as string)
+      )
+    )
+    .addOption(
+      new Option('--osm-agent <AGENT>', 'User agent to use for OpenStreetMap requests').argParser(
+        commanderParser((value) => validateUserAgent(value) as string)
+      )
+    )
+    .addOption(
+      new Option('--providers <LIST>', 'Comma-separated provider order').argParser(
+        commanderParser(parseProviders)
+      )
+    )
+    .addOption(
+      new Option('--rate-profile <PROFILE>', 'Provider rate policy').argParser(
+        commanderParser(parseRateProfile)
+      )
+    )
+    .addOption(
+      new Option('--provider-language <LANG>', 'Provider language').argParser(
+        commanderParser(validateLanguage)
+      )
+    )
+    .addOption(
+      new Option('--provider-timeout-ms <MS>', 'Provider timeout in milliseconds').argParser(
+        commanderParser(parseProviderTimeout)
+      )
+    )
+    .addOption(
+      new Option('--provider-retries <COUNT>', 'Provider retry count').argParser(
+        commanderParser(parseRetries)
+      )
+    )
+    .addOption(
+      new Option('--locationiq-key <KEY>', 'LocationIQ API key').argParser(
+        commanderParser((value) => validateApiKey(value) as string)
+      )
+    )
+    .addOption(
+      new Option('--cache-dir <DIR>', 'Directory to store cache files').argParser(
+        commanderParser((value) => validateCacheDirectory(value) as string)
+      )
+    )
+    .addOption(
+      new Option('--cache-size <SIZE>', 'Number of records to keep in memory').argParser(
+        commanderParser(parseCacheSize)
+      )
+    )
+    .addOption(
+      new Option('--cache-positive-ttl <DURATION>', 'Positive cache TTL').argParser(
+        commanderParser(durationParser('CACHE_POSITIVE_TTL_MS'))
+      )
+    )
+    .addOption(
+      new Option('--cache-negative-ttl <DURATION>', 'Negative cache TTL').argParser(
+        commanderParser(durationParser('CACHE_NEGATIVE_TTL_MS'))
+      )
+    )
+    .addOption(
+      new Option('--rate-limit-max <MAX>', 'Inbound requests per window').argParser(
+        commanderParser(parseRateLimitMax)
+      )
+    )
+    .addOption(
+      new Option('--rate-limit-window <DURATION>', 'Inbound rate-limit window').argParser(
+        commanderParser((value) => {
+          parseRateLimitWindow(value);
+          return value;
+        })
+      )
+    )
+    .addOption(new Option('--rate-limit', 'Enable inbound rate limiting'))
+    .addOption(
+      new Option('--trust-proxy <BOOLEAN>', 'Trust forwarded client addresses').argParser(
+        commanderParser((value) =>
+          value === 'true' || value === 'false'
+            ? value === 'true'
+            : (() => {
+                throw new Error('must be true or false');
+              })()
+        )
+      )
+    )
+    .addOption(
+      new Option('--concurrency <COUNT>', 'Provider concurrency').argParser(
+        commanderParser(parseConcurrency)
+      )
+    )
+    .addOption(
+      new Option('-H, --host <HOST>', 'Host to listen on').argParser(commanderParser(validateHost))
+    )
+    .addOption(
+      new Option('-p, --port <PORT>', 'Port to listen on').argParser(commanderParser(parsePort))
+    );
+}
+
+function settings(options: Record<string, unknown>) {
+  const env = parseEnv();
+  const get = <T>(name: string, fallback: T): T =>
+    options[name] === undefined ? fallback : (options[name] as T);
+  return {
+    osmServer: get('osmServer', env.OSM_SERVER),
+    osmEmail: get('osmEmail', env.OSM_EMAIL),
+    osmAgent: get('osmAgent', env.OSM_USER_AGENT),
+    providers: get('providers', env.PROVIDERS),
+    rateProfile: get('rateProfile', env.RATE_PROFILE),
+    language: get('providerLanguage', env.PROVIDER_LANGUAGE),
+    providerTimeoutMs: get('providerTimeoutMs', env.PROVIDER_TIMEOUT_MS),
+    retries: get('providerRetries', env.PROVIDER_RETRIES),
+    locationIqKey: get('locationiqKey', env.LOCATIONIQ_KEY ?? env.LOCATIONIQ_API_KEY),
+    cacheDir: get('cacheDir', env.CACHE_DIR),
+    cacheSize: get('cacheSize', env.CACHE_SIZE),
+    positiveTtl: get('cachePositiveTtl', env.CACHE_POSITIVE_TTL_MS),
+    negativeTtl: get('cacheNegativeTtl', env.CACHE_NEGATIVE_TTL_MS),
+    rateLimitEnabled: get('rateLimit', env.RATE_LIMIT_ENABLED),
+    rateLimitMax: get('rateLimitMax', env.RATE_LIMIT_MAX),
+    rateLimitWindow: get('rateLimitWindow', env.RATE_LIMIT_WINDOW),
+    trustProxy: get('trustProxy', env.TRUST_PROXY),
+    host: get('host', env.HOST),
+    port: get('port', env.PORT),
+    concurrency: get('concurrency', env.CONCURRENCY),
+    nodeEnv: env.NODE_ENV,
+    logLevel: env.LOG_LEVEL,
+    shutdownTimeout: env.GRACEFUL_SHUTDOWN_TIMEOUT_MS
+  };
+}
+
+function configFrom(options: ReturnType<typeof settings>) {
+  return {
+    providers: options.providers,
+    rateProfile: options.rateProfile,
+    osmServer: options.osmServer,
+    email: options.osmEmail,
+    userAgent: options.osmAgent,
+    language: options.language,
+    providerTimeoutMs: options.providerTimeoutMs,
+    retries: options.retries,
+    concurrency: options.concurrency,
+    locationIqKey: options.locationIqKey
+  };
+}
+
+export function bulkContinueOnError(options: Record<string, unknown>): boolean {
+  return options.continueOnError === true;
+}
+
+export function createProgram(): Command {
+  const program = addConfigOptions(new Command());
+  program
+    .name('gittrends-geocoder')
+    .description('Geocode addresses with configured providers')
+    .helpOption('--help', 'Show usage instructions')
+    .version(pJson.version)
+    .action(async (rawOptions) => {
+      const options = settings(rawOptions);
+      const normalizedOsmServer = normalizeOsmServerUrl(options.osmServer);
+      if (
+        options.providers.includes('osm') &&
+        isDefaultNominatimServer(normalizedOsmServer) &&
+        (!options.osmEmail || !options.osmAgent)
+      ) {
+        program.error(
+          'You must provide an email and user agent for the default server (--help for more info)'
+        );
+      }
+      const app = createApp({
+        cache: {
+          dirname: options.cacheDir,
+          size: options.cacheSize,
+          positiveTtl: options.positiveTtl,
+          negativeTtl: options.negativeTtl
+        },
+        providers: options.providers,
+        rateProfile: options.rateProfile,
+        locationIqKey: options.locationIqKey,
+        providerTimeoutMs: options.providerTimeoutMs,
+        geocoder: {
+          osmServer: normalizedOsmServer,
+          email: options.osmEmail,
+          userAgent: options.osmAgent,
+          language: options.language,
+          retries: options.retries,
+          concurrency: options.concurrency
+        },
+        debug: options.nodeEnv === 'development',
+        logLevel: options.logLevel,
+        trustProxy: options.trustProxy,
+        ...(options.rateLimitEnabled
+          ? { rateLimit: { max: options.rateLimitMax, timeWindow: options.rateLimitWindow } }
+          : {})
+      });
+      await listen(app, options.host, options.port, options.shutdownTimeout);
     });
 
-    try {
-      app.addHook('onListen', () => {
-        const address = app.server.address() as AddressInfo;
-        consola.info(`Server listening on http://${address.address}:${address.port}`);
-      });
+  const bulk = program
+    .command('bulk')
+    .argument('[input]', 'Input file, or - for stdin')
+    .option('-i, --input <FILE>', 'Input file (default: stdin)')
+    .option('--resume <FILE>', 'Previous NDJSON output')
+    .option('--workers <COUNT>', 'Number of workers', '1')
+    .option('--continue-on-error', 'Continue after provider failures');
+  addConfigOptions(bulk).action(async (input, rawOptions, command) => {
+    const root = command.parent?.opts() ?? {};
+    const options = settings({ ...root, ...rawOptions });
+    const publicNominatim =
+      options.providers.includes('osm') && isDefaultNominatimServer(options.osmServer);
+    const rateProfile = publicNominatim ? 'public-bulk' : options.rateProfile;
+    const bulkOptions = { ...options, rateProfile };
+    const inputText = await readInput(rawOptions.input ?? input ?? '-');
+    const resumeText = rawOptions.resume ? await readInput(rawOptions.resume) : undefined;
+    const geocoder = createConfiguredGeocoder(configFrom(bulkOptions), {
+      dirname: bulkOptions.cacheDir,
+      size: bulkOptions.cacheSize,
+      positiveTtl: bulkOptions.positiveTtl,
+      negativeTtl: bulkOptions.negativeTtl
+    });
+    await runBulk({
+      input: inputText,
+      resume: resumeText,
+      geocoder,
+      providers: bulkOptions.providers,
+      rateProfile: bulkOptions.rateProfile,
+      publicNominatim,
+      workers: Number(rawOptions.workers),
+      continueOnError: rawOptions.continueOnError === true,
+      write: (line) => process.stdout.write(`${line}\n`),
+      progress: (line) => process.stderr.write(`${line}\n`)
+    });
+  });
+  return program;
+}
 
-      await app.listen({ host: options.host, port: options.port });
+async function readInput(filename: string): Promise<string> {
+  if (filename !== '-') return readFile(filename, 'utf8');
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString('utf8');
+}
 
-      // Graceful shutdown handler
-      const shutdown = async (signal: string) => {
-        consola.info(`Received ${signal}, starting graceful shutdown...`);
+async function listen(
+  app: ReturnType<typeof createApp>,
+  host: string,
+  port: number,
+  shutdownTimeout: number
+) {
+  app.addHook('onListen', () => {
+    const address = app.server.address() as AddressInfo;
+    consola.info(`Server listening on http://${address.address}:${address.port}`);
+  });
+  try {
+    await app.listen({ host, port });
+    const shutdown = async (signal: string) => {
+      consola.info(`Received ${signal}, starting graceful shutdown...`);
+      try {
+        let timeoutHandle: NodeJS.Timeout | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(
+            () => reject(new Error('Graceful shutdown timed out')),
+            shutdownTimeout
+          );
+        });
         try {
-          // Fastify close drains its registered lifecycle; bound it so a
-          // broken provider or hook cannot keep shutdown alive indefinitely.
-          let timeoutHandle: NodeJS.Timeout | undefined;
-          const timeout = new Promise<never>((_, reject) => {
-            timeoutHandle = setTimeout(
-              () => reject(new Error('Graceful shutdown timed out')),
-              env.GRACEFUL_SHUTDOWN_TIMEOUT_MS
-            );
-          });
-          try {
-            await Promise.race([app.close(), timeout]);
-          } finally {
-            if (timeoutHandle) clearTimeout(timeoutHandle);
-          }
-          consola.info('HTTP server closed');
-
-          consola.success('Graceful shutdown complete');
-          process.exit(0);
-        } catch (error) {
-          consola.error('Error during shutdown:', error);
-          process.exit(1);
+          await Promise.race([app.close(), timeout]);
+        } finally {
+          if (timeoutHandle) clearTimeout(timeoutHandle);
         }
-      };
+        consola.success('Graceful shutdown complete');
+        process.exit(0);
+      } catch (error) {
+        consola.error(error instanceof Error ? error.message : 'Shutdown failed');
+        process.exit(1);
+      }
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+  } catch (error) {
+    consola.error(error instanceof Error ? error.message : 'Server failed to start');
+    process.exitCode = 1;
+  }
+}
 
-      process.on('SIGTERM', () => shutdown('SIGTERM'));
-      process.on('SIGINT', () => shutdown('SIGINT'));
-    } catch (error) {
-      consola.error(error);
-      process.exit(1);
-    }
-  })
-  .parse(process.argv);
+const invokedFile = process.argv[1] ? pathToFileURL(process.argv[1]).href : undefined;
+if (invokedFile === import.meta.url) {
+  createProgram()
+    .parseAsync(process.argv)
+    .catch((error: unknown) => {
+      consola.error(error instanceof Error ? error.message : 'Command failed');
+      process.exitCode = 1;
+    });
+}

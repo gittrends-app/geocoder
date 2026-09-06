@@ -1,6 +1,6 @@
 import Debug from 'debug';
 import { Address } from '../../entities/Address.js';
-import { RequestAbortedError } from '../../errors/index.js';
+import { ProviderError, RequestAbortedError } from '../../errors/index.js';
 import { normalizeQueryWithOriginal } from '../../helpers/query.js';
 import { Geocoder } from '../Geocoder.js';
 
@@ -44,13 +44,9 @@ export class Fallback implements Geocoder {
       ) {
         throw error instanceof RequestAbortedError ? error : new RequestAbortedError(normalized);
       }
-      debug(
-        'primary geocoder failed, using fallback for: %s - error: %s',
-        normalized,
-        error instanceof Error ? error.message : String(error)
-      );
-      // This promise is deliberately returned outside another catch so a
-      // fallback rejection is not mistaken for a primary failure.
+      if (!(error instanceof ProviderError) || !error.retryable) throw error;
+      debug('primary geocoder failed, using fallback for: %s', normalized);
+      abortIfNeeded();
       return this.fallback.search(normalized, options);
     }
 
@@ -60,6 +56,7 @@ export class Fallback implements Geocoder {
       return address;
     }
     debug('primary geocoder returned null, using fallback for: %s', normalized);
+    abortIfNeeded();
     return this.fallback.search(normalized, options);
   }
 }

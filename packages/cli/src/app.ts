@@ -14,14 +14,17 @@ import { z } from 'zod';
 import {
   AddressSchema,
   Cache,
+  type CacheOptions,
   Fallback,
   Geocoder,
   GeocoderError,
+  LocationIQ,
   MAX_QUERY_LENGTH,
   normalizeQuery,
   OpenStreetMap,
   OpenStreetMapOptions,
   Photon,
+  RateLimitError,
   RequestAbortedError,
   ValidationError
 } from '@/core';
@@ -32,8 +35,13 @@ import {
   MAX_RATE_LIMIT_ENTRIES,
   normalizeOsmServerUrl,
   parseCacheSize,
+  parseConcurrency,
+  parseProviders,
+  parseProviderTimeout,
   parseRateLimitMax,
   parseRateLimitWindow,
+  parseRateProfile,
+  validateApiKey,
   validateCacheDirectory,
   validateEmail,
   validateUserAgent
@@ -48,15 +56,150 @@ export function normalizeSearchQuery(query: unknown): string {
   return normalizeQuery(query);
 }
 
-type AppOptions = {
+export type ProviderConfig = OpenStreetMapOptions & {
+  providers?: string[];
+  locationIqKey?: string;
+  rateProfile?: string;
+  providerTimeoutMs?: number;
+};
+
+export type AppOptions = {
   // Accept either geocoder options to construct providers or a ready-made Geocoder (useful for tests)
-  geocoder: OpenStreetMapOptions | Geocoder;
-  cache?: Partial<{ dirname: string; size: number }>;
+  geocoder: ProviderConfig | Geocoder;
+  providers?: string[];
+  rateProfile?: string;
+  locationIqKey?: string;
+  providerTimeoutMs?: number;
+  cache?: Partial<CacheOptions & { dirname: string }>;
   debug?: boolean;
   logLevel?: string;
   rateLimit?: { max?: number; timeWindow?: string; redis?: string; maxKeys?: number };
+  trustProxy?: boolean | string | string[];
   helmet?: { enabled?: boolean };
 };
+
+const ATTRIBUTIONS: Record<string, string> = {
+  openstreetmap: 'OpenStreetMap/Nominatim (https://www.openstreetmap.org/copyright)',
+  photon: 'Photon by Komoot (https://photon.komoot.io/)',
+  locationiq: 'LocationIQ (https://locationiq.com/)'
+};
+
+function applyCache(
+  geocoder: Geocoder,
+  options?: AppOptions['cache'],
+  config?: ProviderConfig
+): Geocoder {
+  if (!options || options.size === undefined || options.size === 0) return geocoder;
+  return new Cache(geocoder, {
+    namespace: 'geocoder-cache-cli',
+    config: config ? cacheIdentity(config) : undefined,
+    size: parseCacheSize(options.size),
+    positiveTtl: options.positiveTtl,
+    negativeTtl: options.negativeTtl,
+    secondary: options.dirname
+      ? new KeyvFile({
+          filename: path.resolve(
+            validateCacheDirectory(options.dirname) as string,
+            'geocoder-cache.json'
+          )
+        })
+      : undefined
+  });
+}
+
+export function createGeocoder(config: ProviderConfig): Geocoder {
+  const providers = parseProviders(config.providers ?? ['osm', 'photon']);
+  const rateProfile = parseRateProfile(config.rateProfile ?? 'public');
+  const concurrency = parseConcurrency(config.concurrency ?? 1);
+  const osmServer = normalizeOsmServerUrl(config.osmServer ?? DEFAULT_OSM_SERVER);
+  const providerTimeoutMs =
+    config.providerTimeoutMs === undefined
+      ? undefined
+      : parseProviderTimeout(config.providerTimeoutMs);
+  const email = validateEmail(config.email);
+  const userAgent = validateUserAgent(config.userAgent);
+  const locationIqKey = validateApiKey(config.locationIqKey);
+
+  if (providers.includes('osm') && isDefaultNominatimServer(osmServer) && (!email || !userAgent)) {
+    throw new ValidationError(
+      'OSM_SERVER',
+      osmServer,
+      'default Nominatim requires OSM_EMAIL and OSM_USER_AGENT'
+    );
+  }
+  if (providers.includes('locationiq') && !locationIqKey) {
+    throw new ValidationError(
+      'LOCATIONIQ_KEY',
+      undefined,
+      'is required when LOCATIONIQ is enabled'
+    );
+  }
+
+  const publicNominatim = providers.includes('osm') && isDefaultNominatimServer(osmServer);
+  const osmRate = publicNominatim
+    ? rateProfile === 'public-bulk'
+      ? { concurrency: 1, intervalCap: 4, interval: 60_000, strict: true }
+      : { concurrency: 1, intervalCap: 1, interval: 1_000, strict: true }
+    : undefined;
+  const makeProvider = (provider: (typeof providers)[number]): Geocoder => {
+    if (provider === 'osm') {
+      return new OpenStreetMap({
+        ...config,
+        osmServer,
+        email,
+        userAgent,
+        timeoutMs: providerTimeoutMs,
+        rate: osmRate
+      });
+    }
+    if (provider === 'photon') {
+      return new Photon({
+        concurrency,
+        language: config.language,
+        retries: config.retries,
+        timeoutMs: providerTimeoutMs
+      });
+    }
+    return new LocationIQ({
+      apiKey: locationIqKey as string,
+      concurrency,
+      language: config.language,
+      retries: config.retries,
+      timeoutMs: providerTimeoutMs
+    });
+  };
+  let geocoder = providers
+    .slice(1)
+    .reduce<Geocoder>(
+      (fallback, provider) => new Fallback(fallback, makeProvider(provider)),
+      makeProvider(providers[0])
+    );
+  return geocoder;
+}
+
+export function createConfiguredGeocoder(
+  config: ProviderConfig,
+  cache?: AppOptions['cache']
+): Geocoder {
+  return applyCache(createGeocoder(config), cache, config);
+}
+
+export function cacheIdentity(config: ProviderConfig): Record<string, unknown> {
+  const providers = parseProviders(config.providers ?? ['osm', 'photon']);
+  const endpoint = normalizeOsmServerUrl(config.osmServer ?? DEFAULT_OSM_SERVER);
+  const rateProfile = parseRateProfile(config.rateProfile ?? 'public');
+  return {
+    schema: 'address-v1',
+    providers,
+    endpoints: {
+      osm: endpoint,
+      photon: 'https://photon.komoot.io/api/',
+      locationiq: 'https://us1.locationiq.com/v1'
+    },
+    language: config.language ?? 'en',
+    policy: { rateProfile, publicNominatim: isDefaultNominatimServer(endpoint) }
+  };
+}
 
 /**
  * Create a new Fastify instance
@@ -68,38 +211,45 @@ export function createApp(options: AppOptions): FastifyInstance {
     !!options.geocoder && typeof (options.geocoder as Geocoder).search === 'function';
   const providerOptions = injectedGeocoder
     ? undefined
-    : (() => {
-        const provider = options.geocoder as OpenStreetMapOptions;
-        return {
-          ...provider,
-          osmServer: normalizeOsmServerUrl(provider.osmServer ?? DEFAULT_OSM_SERVER),
-          email: validateEmail(provider.email),
-          userAgent: validateUserAgent(provider.userAgent)
-        };
-      })();
-  if (
-    providerOptions &&
-    isDefaultNominatimServer(providerOptions.osmServer) &&
-    (!providerOptions.email || !providerOptions.userAgent)
-  ) {
-    throw new ValidationError(
-      'OSM_SERVER',
-      providerOptions.osmServer,
-      'default Nominatim requires OSM_EMAIL and OSM_USER_AGENT'
-    );
-  }
+    : {
+        ...(options.geocoder as ProviderConfig),
+        providers: options.providers ?? (options.geocoder as ProviderConfig).providers,
+        rateProfile: options.rateProfile ?? (options.geocoder as ProviderConfig).rateProfile,
+        locationIqKey: options.locationIqKey ?? (options.geocoder as ProviderConfig).locationIqKey,
+        providerTimeoutMs:
+          options.providerTimeoutMs ?? (options.geocoder as ProviderConfig).providerTimeoutMs
+      };
   const cacheOptions = options.cache
     ? {
         dirname: validateCacheDirectory(options.cache.dirname),
-        size: options.cache.size === undefined ? undefined : parseCacheSize(options.cache.size)
+        size: options.cache.size === undefined ? undefined : parseCacheSize(options.cache.size),
+        positiveTtl: options.cache.positiveTtl,
+        negativeTtl: options.cache.negativeTtl
       }
     : undefined;
 
-  const logger = options.logLevel ? { level: options.logLevel } : options.debug;
-  const app = fastify({ logger, trustProxy: false });
+  const logger =
+    options.logLevel || options.debug
+      ? {
+          level: options.logLevel ?? 'debug',
+          serializers: {
+            req: (request: { method: string; routeOptions?: { url?: string } }) => ({
+              method: request.method,
+              route: request.routeOptions?.url
+            })
+          }
+        }
+      : false;
+  const app = fastify({ logger, trustProxy: options.trustProxy ?? false });
 
   app.setErrorHandler((error, request, reply) => {
-    app.log.error({ err: error, url: request.url }, 'request failed');
+    app.log.error(
+      {
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+        route: request.routeOptions.url
+      },
+      'request failed'
+    );
     if (reply.sent) return;
     if (
       error instanceof RequestAbortedError ||
@@ -109,6 +259,10 @@ export function createApp(options: AppOptions): FastifyInstance {
     }
     if (error instanceof ValidationError || (error as { validation?: unknown }).validation) {
       return reply.code(400).send({ message: 'Invalid request' });
+    }
+    if (error instanceof RateLimitError) {
+      if (error.retryAfter !== undefined) reply.header('Retry-After', String(error.retryAfter));
+      return reply.code(429).send({ message: 'Geocoding service rate limited' });
     }
     if (error instanceof GeocoderError) {
       return reply.code(502).send({ message: 'Geocoding service unavailable' });
@@ -192,25 +346,34 @@ export function createApp(options: AppOptions): FastifyInstance {
             const oldestKey = store.keys().next().value;
             if (oldestKey !== undefined) store.delete(oldestKey);
           }
-          store.set(key, { count: 1, reset: now + windowMs, lastSeen: now });
+          entry = { count: 1, reset: now + windowMs, lastSeen: now };
+          store.set(key, entry);
         } else {
           entry.count += 1;
           entry.lastSeen = now;
           // Map insertion order is the bounded LRU order.
           store.delete(key);
           store.set(key, entry);
-          if (entry.count > max) {
-            return reply.code(429).send({
-              statusCode: 429,
-              error: 'Too Many Requests',
-              message: `Rate limit exceeded. Try again after ${Math.round((entry.reset - now) / 1000)} seconds.`,
-              retryAfter: Math.round((entry.reset - now) / 1000)
-            });
-          }
+        }
+        const retryAfter = Math.max(1, Math.ceil((entry.reset - now) / 1000));
+        reply.header('X-RateLimit-Limit', String(max));
+        reply.header('X-RateLimit-Remaining', String(Math.max(0, max - entry.count)));
+        reply.header('X-RateLimit-Reset', String(Math.ceil(entry.reset / 1000)));
+        if (entry.count > max) {
+          reply.header('Retry-After', String(retryAfter));
+          return reply.code(429).send({
+            statusCode: 429,
+            error: 'Too Many Requests',
+            message: `Rate limit exceeded. Try again after ${retryAfter} seconds.`,
+            retryAfter
+          });
         }
       } catch (err: unknown) {
         // On error, do not block the request; fail-open
-        app.log.warn('rate-limiter error: %o', { error: String(err) });
+        app.log.warn(
+          { errorName: err instanceof Error ? err.name : 'UnknownError' },
+          'rate-limiter error'
+        );
       }
     });
   }
@@ -251,7 +414,10 @@ export function createApp(options: AppOptions): FastifyInstance {
           "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: validator.swagger.io; connect-src 'self'"
         );
       } catch (err: unknown) {
-        app.log.warn('failed to set security headers: %o', { error: String(err) });
+        app.log.warn(
+          { errorName: err instanceof Error ? err.name : 'UnknownError' },
+          'failed to set security headers'
+        );
       }
       return payload;
     });
@@ -262,20 +428,13 @@ export function createApp(options: AppOptions): FastifyInstance {
   if (injectedGeocoder) {
     geocoder = options.geocoder as Geocoder;
   } else {
-    const opts = providerOptions as OpenStreetMapOptions;
-    geocoder = new Fallback(new OpenStreetMap(opts), new Photon(opts));
+    geocoder = createGeocoder(providerOptions as ProviderConfig);
   }
-  const healthGeocoder = geocoder;
-
-  if (cacheOptions?.size) {
-    geocoder = new Cache(geocoder, {
-      namespace: 'geocoder-cache-cli',
-      size: cacheOptions.size,
-      secondary: cacheOptions.dirname
-        ? new KeyvFile({ filename: path.resolve(cacheOptions.dirname, 'geocoder-cache.json') })
-        : undefined
-    });
-  }
+  geocoder = applyCache(
+    geocoder,
+    cacheOptions,
+    injectedGeocoder ? undefined : (providerOptions as ProviderConfig)
+  );
 
   app.after(async () => {
     app.get('/', async (req, res) => {
@@ -321,60 +480,41 @@ export function createApp(options: AppOptions): FastifyInstance {
 
         const address = await geocoder.search(normalized, { signal: controller.signal });
 
-        // Log structured geocoding result
+        // Log structured geocoding result without query or URL
         app.log.info(
           {
-            query: normalized,
+            queryLength: normalized.length,
             result: address ? 'resolved' : 'not_found',
             resolved: !!address,
             ...(address && {
               provider: address.provider,
-              name: address.name,
               confidence: address.confidence
             })
           },
           'geocoding completed'
         );
 
-        if (address) res.send(address);
-        else res.status(404).send({ message: 'Address not found' });
+        if (address) {
+          res.header('X-Geocoder-Provider', address.provider);
+          if (address.provider in ATTRIBUTIONS) {
+            res.header('X-Geocoder-Attribution', ATTRIBUTIONS[address.provider]);
+          }
+          res.send(address);
+        } else res.status(404).send({ message: 'Address not found' });
       }
     });
 
-    // Health endpoints
+    // Health endpoints are local-only and must not consume provider capacity.
     app.get('/health', async (req, res) => {
-      const health: Record<string, unknown> = {
+      res.send({
         status: 'healthy',
         timestamp: new Date().toISOString(),
         uptime: process.uptime()
-      };
-
-      try {
-        // Quick check to see if geocoding works
-        const testResult = await healthGeocoder.search('test', {
-          signal: AbortSignal.timeout(1000)
-        });
-        if (testResult) health.status = 'healthy';
-        else {
-          health.status = 'degraded';
-          res.status(503);
-        }
-      } catch {
-        health.status = 'degraded';
-        res.status(503);
-      }
-
-      res.send(health);
+      });
     });
 
     app.get('/health/ready', async (req, res) => {
-      try {
-        const result = await healthGeocoder.search('test', { signal: AbortSignal.timeout(1000) });
-        if (result) res.status(200).send({ ready: true });
-        else res.status(503).send({ ready: false });
-      } catch {
-        res.status(503).send({ ready: false });
-      }
+      res.status(200).send({ ready: true });
     });
 
     app.get('/health/live', async (req, res) => {
